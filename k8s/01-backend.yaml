@@ -1,0 +1,254 @@
+# =============================================================
+# FILE LOCATION: fileconverter/k8s/01-backend.yaml
+#
+# WHAT THIS FILE DOES:
+# Creates 4 Kubernetes resources for your Node.js backend:
+#
+# 1. DEPLOYMENT  - Runs 2 copies of your backend pod at all times
+#                  Handles rolling updates (zero downtime deploys)
+#                  Auto-restarts crashed pods
+#
+# 2. SERVICE     - Gives your backend a stable internal address "backend"
+#                  Other pods reach it at http://backend:5000
+#                  Load balances between the 2 (or more) pods
+#
+# 3. HPA         - HorizontalPodAutoscaler
+#                  If CPU > 70%, automatically adds more pods (up to 8)
+#                  When traffic drops, scales back down to minimum 2
+#
+# 4. PVC         - PersistentVolumeClaim
+#                  Requests 10GB storage for /app/uploads folder
+#                  All pods share the same storage (ReadWriteMany)
+#
+# HOW TO APPLY:
+#   kubectl apply -f k8s/01-backend.yaml
+# =============================================================
+
+
+# ── RESOURCE 1: Deployment ────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: fileconverter-app
+  labels:
+    app: backend
+    tier: api
+spec:
+  replicas: 2                        # always run 2 copies for high availability
+
+  selector:
+    matchLabels:
+      app: backend                   # this deployment manages pods with this label
+
+  # Rolling update = zero downtime deployments
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1                    # temporarily allow 3 pods during deployment
+      maxUnavailable: 0              # never drop below 2 pods during deployment
+
+  template:
+    metadata:
+      labels:
+        app: backend
+        tier: api
+    spec:
+      # Run as non-root user (matches your Dockerfile USER appuser)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+
+      containers:
+      - name: backend
+        # Replace with your actual image from GitHub Container Registry
+        # Format: ghcr.io/YOUR-GITHUB-USERNAME/backend:latest
+        image: ghcr.io/your-github-username/backend:latest
+        imagePullPolicy: Always      # always pull latest image on pod start
+
+        ports:
+        - containerPort: 5000
+          name: http
+
+        # Resource limits - prevents one pod from eating all server resources
+        # requests = guaranteed resources
+        # limits = maximum allowed (CPU throttled, memory causes pod restart)
+        resources:
+          requests:
+            cpu: "200m"              # 200 millicores = 0.2 CPU cores guaranteed
+            memory: "256Mi"          # 256MB RAM guaranteed
+          limits:
+            cpu: "1000m"             # 1 full CPU core maximum
+            memory: "512Mi"          # 512MB RAM maximum
+
+        # Environment variables - plain values
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "5000"
+        - name: MONGO_URI
+          value: "mongodb://mongo:27017/fileconverter"
+        - name: REDIS_URL
+          value: "redis://redis:6379"
+        - name: AI_SERVICE_URL
+          value: "http://ai-service:8000"
+
+        # Environment variables - pulled from your Secret (00-namespace-secrets.yaml)
+        # Format: secretKeyRef means "read from the secret named app-secrets"
+        - name: ACCESS_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: ACCESS_SECRET_KEY
+        - name: REFRESH_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: REFRESH_SECRET_KEY
+        - name: COOKIE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: COOKIE_SECRET_KEY
+        - name: RESET_PASSWORD_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: RESET_PASSWORD_SECRET_KEY
+        - name: INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: INTERNAL_API_KEY
+        - name: CLOUDINARY_CLOUD_NAME
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: CLOUDINARY_CLOUD_NAME
+        - name: CLOUDINARY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: CLOUDINARY_API_KEY
+        - name: CLOUDINARY_API_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: CLOUDINARY_API_SECRET
+        - name: CLOUDCONVERT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: CLOUDCONVERT_API_KEY
+        - name: RESEND_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: RESEND_API_KEY
+        - name: RECAPTCHA_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: RECAPTCHA_SECRET_KEY
+
+        # Liveness probe: "Is the app alive?"
+        # If this fails 3 times → Kubernetes RESTARTS the pod
+        # Hits your /api/health endpoint from app.js
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 20    # wait 20s before first check (Node.js startup time)
+          periodSeconds: 30          # check every 30 seconds
+          timeoutSeconds: 10         # fail if no response in 10 seconds
+          failureThreshold: 3        # restart after 3 consecutive failures
+
+        # Readiness probe: "Is the app ready to receive traffic?"
+        # If this fails → Kubernetes STOPS sending traffic to this pod (but doesn't restart)
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+
+        # Mount the uploads storage volume into the container
+        volumeMounts:
+        - name: uploads
+          mountPath: /app/uploads
+
+      volumes:
+      - name: uploads
+        persistentVolumeClaim:
+          claimName: uploads-pvc     # references the PVC defined below
+
+
+---
+
+# ── RESOURCE 2: Service ───────────────────────────────────────
+# Gives backend a stable internal hostname "backend"
+# Other pods use http://backend:5000 to reach it
+# Kubernetes automatically load-balances between all backend pods
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: fileconverter-app
+spec:
+  selector:
+    app: backend                     # routes traffic to pods with label app=backend
+  ports:
+  - port: 5000
+    targetPort: 5000
+    name: http
+  type: ClusterIP                    # internal only - Ingress handles external traffic
+
+
+---
+
+# ── RESOURCE 3: HorizontalPodAutoscaler ──────────────────────
+# Automatically scales pods based on CPU usage
+# CPU > 70% → add a pod (up to 8 max)
+# CPU drops → remove pods (down to 2 minimum)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: fileconverter-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70       # scale up when average CPU > 70%
+
+
+---
+
+# ── RESOURCE 4: PersistentVolumeClaim ────────────────────────
+# Requests 10GB of storage for uploaded files
+# ReadWriteMany = all backend pods share the same storage volume
+# This is important because you have 2+ pods that all need to
+# read/write the same uploaded files
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uploads-pvc
+  namespace: fileconverter-app
+spec:
+  accessModes:
+    - ReadWriteMany                  # multiple pods can read+write simultaneously
+  resources:
+    requests:
+      storage: 10Gi                  # 10 gigabytes

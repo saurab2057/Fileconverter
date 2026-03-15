@@ -1,0 +1,40 @@
+=== WEBSITE INFORMATION ===
+
+Website Name: FileConverter Pro
+URL: https://fileconverter-pro.com
+
+Services Offered:
+- PNG to SVG conversion
+- MP4 to MP3 audio extraction and conversion.
+- Text or PDF to text summary with 5 page pdf limitation.
+- Batch file conversion (up to 5 files).
+- Cloud storage integration (Cloudinary) for profile pictures.
+
+Features:
+- Free tier: 5 conversions per day
+- Premium tier: Unlimited conversions, priority processing
+- Secure file handling (files deleted after 24 hours)
+- Google OAuth login supported
+- Admin dashboard for monitoring
+
+Technology:
+- Frontend: React + Vite
+- Backend: Node.js + Express
+- AI: HuggingFace BART for summarization
+- Database: MongoDB
+- File Storage: Cloudinary
+
+Contact:
+- Email: support@fileconverter-pro.com
+- No phone support currently
+
+Pricing:
+- Free: $0/month (5 conversions/day)
+- Premium: $9.99/month (unlimited)
+
+Limitations:
+- Max file size: 10MB per file
+- Supported formats: PNG, JPG, MP4, MP3, PDF
+- NOT supporting: DOCX, XLS, AVI conversions
+
+=== END OF WEBSITE INFORMATION ===

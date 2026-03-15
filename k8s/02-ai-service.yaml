@@ -1,0 +1,164 @@
+# =============================================================
+# FILE LOCATION: fileconverter/k8s/02-ai-service.yaml
+#
+# WHAT THIS FILE DOES:
+# Creates 3 Kubernetes resources for your Python FastAPI service:
+#
+# 1. DEPLOYMENT  - Runs 1 copy of your AI service pod
+#                  (AI models are memory-heavy - start with 1)
+#                  Has longer startup time (60s) for Qwen model warmup
+#
+# 2. SERVICE     - Gives it stable internal address "ai-service"
+#                  Backend reaches it at http://ai-service:8000
+#
+# 3. PVC         - 20GB storage for HuggingFace model cache
+#                  So Qwen model doesn't re-download every pod restart
+#                  Qwen model is ~4-7GB
+#
+# HOW TO APPLY:
+#   kubectl apply -f k8s/02-ai-service.yaml
+# =============================================================
+
+
+# ── RESOURCE 1: Deployment ────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: fileconverter-app
+  labels:
+    app: ai-service
+    tier: ai
+spec:
+  replicas: 1                        # start with 1 - AI models use a lot of RAM
+
+  selector:
+    matchLabels:
+      app: ai-service
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  template:
+    metadata:
+      labels:
+        app: ai-service
+        tier: ai
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+
+      containers:
+      - name: ai-service
+        # Replace with your actual image
+        # Format: ghcr.io/YOUR-GITHUB-USERNAME/ai-service:latest
+        image: ghcr.io/your-github-username/ai-service:latest
+        imagePullPolicy: Always
+
+        ports:
+        - containerPort: 8000
+          name: http
+
+        # AI models are heavy! More resources needed than backend
+        # Qwen2.5-0.5B-Instruct needs significant RAM to run
+        resources:
+          requests:
+            cpu: "500m"              # 0.5 CPU cores guaranteed
+            memory: "1Gi"            # 1GB RAM guaranteed
+          limits:
+            cpu: "2000m"             # 2 CPU cores maximum
+            memory: "4Gi"            # 4GB RAM maximum (Qwen needs this)
+
+        # Environment variables
+        env:
+        - name: NODE_BACKEND_URL
+          value: "http://backend:5000"      # allows CORS from backend
+
+        # Secrets from 00-namespace-secrets.yaml
+        - name: INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: INTERNAL_API_KEY
+
+        # HuggingFace token (from your config.py: HF_TOKEN = os.getenv("HF_TOKEN"))
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: HF_TOKEN
+
+        # Liveness probe - longer delays because Qwen model takes time to load
+        # start-period=90s matches your SummarizerModel.get_model() warmup in main.py
+        livenessProbe:
+          httpGet:
+            path: /health            # your FastAPI /health endpoint in main.py
+            port: 8000
+          initialDelaySeconds: 90    # wait 90s before first check (model loading time)
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60    # 60s for model to be ready to serve requests
+          periodSeconds: 15
+          timeoutSeconds: 10
+
+        # Mount model cache volume
+        volumeMounts:
+        - name: model-cache
+          mountPath: /root/.cache/huggingface   # HuggingFace default cache location
+
+      volumes:
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: model-cache-pvc
+
+
+---
+
+# ── RESOURCE 2: Service ───────────────────────────────────────
+# Stable internal hostname "ai-service"
+# Backend calls http://ai-service:8000/chat and /summarize
+# Only accessible inside the cluster (ClusterIP) - not exposed to internet
+# (your INTERNAL_API_KEY in config.py protects the endpoints)
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-service
+  namespace: fileconverter-app
+spec:
+  selector:
+    app: ai-service
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  type: ClusterIP
+
+
+---
+
+# ── RESOURCE 3: PersistentVolumeClaim ────────────────────────
+# 20GB storage for HuggingFace model cache
+# Without this, every time a pod restarts it re-downloads the Qwen model
+# (Qwen2.5-0.5B-Instruct is ~1GB, Llama-3-8B is ~16GB)
+# With this PVC, model downloads once and is cached permanently
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-cache-pvc
+  namespace: fileconverter-app
+spec:
+  accessModes:
+    - ReadWriteOnce                  # only one pod needs this (we only have 1 replica)
+  resources:
+    requests:
+      storage: 20Gi                  # 20GB for model files

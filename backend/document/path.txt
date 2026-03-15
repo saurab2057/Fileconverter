@@ -1,0 +1,159 @@
+================================================================================
+                    BACKEND FILE STRUCTURE
+================================================================================
+
+backend/
+│
+├── index.js                        # Server entry point
+├── app.js                          # Express app setup
+├── .env                            # Environment variables (DO NOT COMMIT)
+├── .env.example                    # Environment template (COMMIT THIS)
+├── .gitignore                      # Git ignore rules
+├── package.json                    # Dependencies & scripts
+├── package-lock.json               # Locked dependency versions
+│
+├── config/
+│   └── db.js                       # MongoDB connection logic
+│
+├── controllers/
+│   ├── authController.js           # Login, Signup, Google OAuth
+│   ├── passwordController.js       # Forgot Password, Reset Password
+│   ├── sessionController.js        # Refresh Token, Logout, Sessions
+│   ├── userController.js           # Profile updates, Settings
+│   ├── conversionController.js     # File conversion logic
+│   ├── chatbotController.js        # AI chatbot logic
+│   ├── summarizerController.js     # PDF summarization logic
+│   ├── historyController.js        # Conversion history
+│   └── adminController.js          # Admin dashboard, User management
+│
+├── middleware/
+│   ├── authMiddleware.js           # JWT verification, password check
+│   ├── security.js                 # CORS, Helmet, Cookie Parser, Morgan
+│   ├── errorHandling.js            # Global error handler
+│   ├── recaptchaMiddleware.js      # reCAPTCHA verification
+│   ├── collectUserMetadata.js      # Save device/location info
+│   ├── pdfProcessor.js             # PDF text extraction
+│   ├── rateLimiter.js              # All rate limiters (7 types)
+│   ├── validation.js               # All express-validator rules
+│   ├── fileUpload.js               # Multer configs (PDF, Conversion)
+│   ├── auditLogger.js              # Admin action logging
+│   └── cloudinary.cjs              # Cloudinary upload (CommonJS)
+│
+├── models/
+│   ├── User.js                     # User schema (lean, indexed)
+│   ├── Session.js                  # Refresh tokens (TTL: 7 days)
+│   ├── UserMetadata.js             # Device info, location (hashed IP)
+│   ├── FileHistory.js              # Conversion history
+│   ├── Config.js                   # System configuration (singleton)
+│   └── AuditLog.js                 # Admin actions (immutable)
+│
+├── routes/
+│   ├── authRoutes.js               # /api/auth/* endpoints
+│   ├── userRoutes.js               # /api/users/* endpoints
+│   ├── historyRoutes.js            # /api/history/* endpoints
+│   ├── conversionRoutes.js         # /api/conversion/* endpoints
+│   ├── chatbotRoutes.js            # /api/chat/* endpoints
+│   ├── aisummarizerRoutes.js       # /api/summarize/* endpoints
+│   └── adminRoutes.js              # /api/admin/* endpoints
+│
+├── utils/
+│   ├── authSecurity.js             # IP hashing, token validation, JTI
+│   ├── aiSecurity.js               # Input sanitization, prompt blocking
+│   └── fileSecurity.js             # MIME validation, file checks
+│
+└── documentation/
+    ├── architecture.txt            # This file (system architecture)
+    ├── package.txt                 # This file (npm packages)
+    └── path.txt                    # This file (file structure)
+
+================================================================================
+                    KEY FILE RESPONSIBILITIES
+================================================================================
+
+ENTRY POINTS:
+├── index.js           → Starts server, connects to DB, listens on port
+└── app.js             → Configures Express, middleware, routes
+
+AUTHENTICATION FLOW:
+├── authController.js  → Handles login/signup logic
+├── passwordController.js → Handles password reset flow
+├── sessionController.js  → Handles token refresh & session management
+├── authMiddleware.js  → Verifies JWT on protected routes
+└── Session.js         → Stores refresh tokens (separate collection)
+
+FILE HANDLING:
+├── conversionController.js → CloudConvert API integration
+├── fileUpload.js      → Multer configuration
+├── cloudinary.cjs     → Profile picture upload
+├── pdfProcessor.js    → PDF text extraction
+└── fileSecurity.js    → MIME type validation
+
+AI FEATURES:
+├── chatbotController.js    → HuggingFace chat API
+├── summarizerController.js → HuggingFace summarization API
+└── aiSecurity.js           → Prompt injection protection
+
+ADMIN & AUDIT:
+├── adminController.js → Dashboard, user management
+├── auditLogger.js     → Log admin actions
+└── AuditLog.js        → Immutable audit records
+
+SECURITY:
+├── security.js        → CORS, Helmet, headers
+├── rateLimiter.js     → Rate limiting (7 types)
+├── validation.js      → Input validation rules
+├── recaptchaMiddleware.js → Bot protection
+└── authSecurity.js    → IP hashing, token checks
+
+================================================================================
+                    IMPORT PATH EXAMPLES
+================================================================================
+
+// Controllers import from models
+import User from '../models/User.js';
+import Session from '../models/Session.js';
+
+// Controllers import from middleware
+import { saveUserMetadata } from '../middleware/collectUserMetadata.js';
+import { logAdminAction } from '../middleware/auditLogger.js';
+
+// Controllers import from utils
+import { hashIP, generateJti } from '../utils/authSecurity.js';
+import { sanitizeInput } from '../utils/aiSecurity.js';
+import { validateFileSecurity } from '../utils/fileSecurity.js';
+
+// Routes import from controllers
+import { login, signup } from '../controllers/authController.js';
+import { refreshToken, logout } from '../controllers/sessionController.js';
+
+// Routes import from middleware
+import { authenticateToken } from '../middleware/authMiddleware.js';
+import { authLimiter } from '../middleware/rateLimiter.js';
+
+// Middleware import from utils
+import { hashIP } from '../utils/authSecurity.js';
+
+// Models are standalone (no imports from controllers/routes)
+
+================================================================================
+                    DEPLOYMENT CHECKLIST
+================================================================================
+
+□ All .env variables set in production
+□ MongoDB connection string updated
+□ All secret keys rotated (strong random strings)
+□ NODE_ENV=production
+□ HTTPS enabled (SSL certificate)
+□ CORS origins restricted to production domain
+□ Rate limits tested under load
+□ Audit logs verified working
+□ Session TTL confirmed (7 days)
+□ Email service (Resend) verified
+□ Cloudinary & CloudConvert APIs tested
+□ reCAPTCHA keys updated for production
+□ Error logging configured (e.g., Sentry)
+□ Database indexes created
+□ Backup strategy implemented
+□ Monitoring enabled (e.g., PM2, New Relic)
+
+================================================================================

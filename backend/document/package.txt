@@ -1,0 +1,147 @@
+================================================================================
+                    BACKEND NPM PACKAGES (package.json)
+================================================================================
+
+{
+  "name": "file-converter-backend",
+  "version": "1.0.0",
+  "description": "Enterprise-grade file converter backend with AI features",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^8.0.3",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "resend": "^2.1.0",
+    "axios": "^1.6.5",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "cookie-parser": "^1.4.6",
+    "multer": "^1.4.5-lts.1",
+    "multer-storage-cloudinary": "^2.2.1",
+    "cloudinary": "^1.41.0",
+    "file-type": "^18.7.0",
+    "unpdf": "^0.10.0",
+    "ua-parser-js": "^1.0.37",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
+================================================================================
+                    PACKAGE DESCRIPTIONS
+================================================================================
+
+CORE FRAMEWORK:
+├── express              → Web framework (routing, middleware)
+├── mongoose             → MongoDB ODM (database operations)
+└── dotenv               → Environment variable management
+
+AUTHENTICATION & SECURITY:
+├── bcrypt               → Password hashing (salt rounds: 10)
+├── jsonwebtoken         → JWT token generation/verification
+├── helmet               → HTTP security headers (CSP, HSTS, etc.)
+├── cors                 → Cross-Origin Resource Sharing
+├── cookie-parser        → Parse HTTP cookies
+└── express-rate-limit   → Rate limiting middleware
+
+VALIDATION:
+└── express-validator    → Input validation & sanitization
+
+FILE HANDLING:
+├── multer               → File upload handling (multipart/form-data)
+├── multer-storage-cloudinary → Cloudinary storage for multer (v2.2.1)
+├── cloudinary           → Cloudinary SDK (image hosting)
+└── file-type            → MIME type detection from buffer
+
+PDF PROCESSING:
+└── unpdf                → PDF text extraction (pdf.js wrapper)
+
+USER ANALYTICS:
+└── ua-parser-js         → User agent parsing (device, browser, OS)
+
+EXTERNAL APIs:
+├── axios                → HTTP client (external API calls)
+└── resend               → Email service (password reset emails)
+
+DEVELOPMENT:
+├── nodemon              → Auto-restart server on file changes
+└── jest                 → Testing framework
+
+================================================================================
+                    INSTALLATION COMMANDS
+================================================================================
+
+# Install all dependencies
+npm install
+
+# Install production dependencies only
+npm install --production
+
+# Install specific package
+npm install <package-name>
+
+# Update all packages
+npm update
+
+# Check for outdated packages
+npm outdated
+
+# Audit for security vulnerabilities
+npm audit
+
+# Fix security vulnerabilities
+npm audit fix
+
+================================================================================
+                    ENVIRONMENT VARIABLES (.env)
+================================================================================
+
+# Server
+NODE_ENV=development
+PORT=5000
+FRONTEND_URL=http://localhost:5173
+
+# Database
+MONGODB_URI=mongodb://localhost:27017/fileconverter
+
+# JWT Secrets (USE STRONG RANDOM STRINGS!)
+ACCESS_SECRET_KEY=your_access_secret_key_here
+REFRESH_SECRET_KEY=your_refresh_secret_key_here
+RESET_PASSWORD_SECRET_KEY=your_reset_password_secret_here
+COOKIE_SECRET_KEY=your_cookie_secret_key_here
+
+# Cloudinary (Profile Pictures)
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+
+# CloudConvert (File Conversion)
+CLOUDCONVERT_API_KEY=your_cloudconvert_api_key
+
+# Resend (Email)
+RESEND_API_KEY=your_resend_api_key
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+
+# reCAPTCHA
+RECAPTCHA_SECRET_KEY=your_recaptcha_secret_key
+
+================================================================================

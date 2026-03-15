@@ -1,0 +1,234 @@
+================================================================================
+                    FILE CONVERTER BACKEND ARCHITECTURE
+                         Enterprise-Grade Security
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           FRONTEND (React/Vite)                             │
+│                    http://localhost:5173 (Development)                      │
+│                    https://yourdomain.com (Production)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        LOAD BALANCER / REVERSE PROXY                        │
+│                           (Nginx / Cloudflare)                              │
+│                    • SSL Termination                                        │
+│                    • DDoS Protection                                        │
+│                    • Request Routing                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         NODE.JS EXPRESS SERVER                              │
+│                              (Port 5000)                                    │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                         MIDDLEWARE LAYER                              │ │
+│  │                                                                       │ │
+│  │  1. Security (security.js)                                            │ │
+│  │     • CORS Configuration                                              │ │
+│  │     • Helmet (CSP, HSTS, X-Frame-Options)                             │ │
+│  │     • Cookie Parser                                                   │ │
+│  │     • Morgan (Logging)                                                │ │
+│  │                                                                       │ │
+│  │  2. Rate Limiting (rateLimiter.js)                                    │ │
+│  │     • authLimiter (5 req/min)                                         │ │
+│  │     • userReadLimiter (60 req/min)                                    │ │
+│  │     • userWriteLimiter (500 req/min)                                  │ │
+│  │     • conversionLimiter (10 req/min)                                  │ │
+│  │     • chatLimiter (10 req/min)                                        │ │
+│  │     • summarizeLimiter (5 req/min)                                    │ │
+│  │     • adminLimiter (100 req/15min)                                    │ │
+│  │                                                                       │ │
+│  │  3. Authentication (authMiddleware.js)                                │ │
+│  │     • JWT Verification (Access Token)                                 │ │
+│  │     • Password Change Validation                                      │ │
+│  │     • Account Lock Check                                              │ │
+│  │     • isAdmin Check                                                   │ │
+│  │                                                                       │ │
+│  │  4. Validation (validation.js)                                        │ │
+│  │     • express-validator rules                                         │ │
+│  │     • Input sanitization                                              │ │
+│  │                                                                       │ │
+│  │  5. File Upload (fileUpload.js, cloudinary.cjs)                       │ │
+│  │     • Multer configuration                                            │ │
+│  │     • Cloudinary integration                                          │ │
+│  │                                                                       │ │
+│  │  6. Security Checks                                                   │ │
+│  │     • reCAPTCHA verification                                          │ │
+│  │     • File type validation                                            │ │
+│  │     • IP hashing (GDPR)                                               │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                       │
+│                                    ▼                                       │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                          ROUTE LAYER                                  │ │
+│  │                                                                       │ │
+│  │  /api/auth/*        → authRoutes.js                                   │ │
+│  │  /api/users/*       → userRoutes.js                                   │ │
+│  │  /api/history/*     → historyRoutes.js                                │ │
+│  │  /api/conversion/*  → conversionRoutes.js                             │ │
+│  │  /api/chat/*        → chatbotRoutes.js                                │ │
+│  │  /api/summarize/*   → aisummarizerRoutes.js                           │ │
+│  │  /api/admin/*       → adminRoutes.js                                   │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                        CONTROLLER LAYER                               │ │
+│  │                                                                       │ │
+│  │  authController.js      → Login, Signup, Google OAuth                 │ │
+│  │  passwordController.js  → Forgot Password, Reset Password             │ │
+│  │  sessionController.js   → Refresh Token, Logout, Session Management   │ │
+│  │  userController.js      → Profile, Settings                           │ │
+│  │  conversionController.js→ File Conversion (CloudConvert)              │ │
+│  │  chatbotController.js   → AI Chat (HuggingFace)                       │ │
+│  │  summarizerController.js→ PDF Summarization                           │ │
+│  │  historyController.js   → Conversion History                          │ │
+│  │  adminController.js     → Dashboard, User Management, Config          │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                          MODEL LAYER                                  │ │
+│  │                                                                       │ │
+│  │  User.js              → User accounts (lean, indexed)                 │ │
+│  │  Session.js           → Refresh tokens (TTL: 7 days)                  │ │
+│  │  UserMetadata.js      → Device info, location (GDPR hashed IP)        │ │
+│  │  FileHistory.js       → Conversion history                            │ │
+│  │  Config.js            → System configuration (singleton)              │ │
+│  │  AuditLog.js          → Admin actions (immutable)                     │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                          UTILITY LAYER                                │ │
+│  │                                                                       │ │
+│  │  authSecurity.js      → IP hashing, token validation, JTI generation  │ │
+│  │  aiSecurity.js        → Input sanitization, prompt injection blocks   │ │
+│  │  fileSecurity.js      → MIME validation, file type checks             │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         EXTERNAL SERVICES                                   │
+│                                                                             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │
+│  │   MongoDB       │  │   Cloudinary    │  │  CloudConvert   │            │
+│  │   (Database)    │  │   (Images)      │  │  (Conversion)   │            │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘            │
+│                                                                             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │
+│  │   Resend        │  │  Google OAuth   │  │  HuggingFace    │            │
+│  │   (Email)       │  │   (Auth)        │  │  (AI Models)    │            │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘            │
+│                                                                             │
+│  ┌─────────────────┐  ┌─────────────────┐                                  │
+│  │  reCAPTCHA      │  │  ip-api.com     │                                  │
+│  │  (Bot Protect)  │  │  (GeoIP)        │                                  │
+│  └─────────────────┘  └─────────────────┘                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                           SECURITY FEATURES
+================================================================================
+
+1. AUTHENTICATION & AUTHORIZATION
+   • JWT Access Tokens (15 min expiry)
+   • JWT Refresh Tokens (7 day expiry)
+   • Token Rotation (new JTI on each refresh)
+   • Token Reuse Detection (theft prevention)
+   • Password Change Invalidation (all sessions revoked)
+   • Account Locking (5 failed attempts = 2 hour lock)
+   • Multi-Device Support (Session collection)
+   • HttpOnly Cookies (XSS protection)
+
+2. INPUT VALIDATION
+   • express-validator rules
+   • reCAPTCHA v3 (score >= 0.7)
+   • File type validation (MIME + extension match)
+   • Prompt injection blocking (AI endpoints)
+   • XSS prevention (script tag sanitization)
+
+3. DATA PROTECTION
+   • IP Hashing (SHA256 for GDPR)
+   • Password Hashing (bcrypt, salt: 10)
+   • Audit Logging (immutable records)
+   • Session TTL (auto-cleanup after 7 days)
+   • Cache Control Headers (no-store)
+
+4. RATE LIMITING
+   • Per-endpoint limits
+   • Per-user limits (authenticated)
+   • Per-IP limits (public endpoints)
+   • Admin-specific limits (stricter)
+
+5. COMPLIANCE
+   • GDPR (IP hashing, data minimization)
+   • SOC2 (audit logs, access controls)
+   • PCI-DSS (secure password handling)
+   • NIST 800-63B (session management)
+
+================================================================================
+                           DATABASE SCHEMA
+================================================================================
+
+COLLECTIONS:
+1. users           → User accounts
+2. sessions        → Refresh tokens (TTL index)
+3. usermetadatas   → Device/location info
+4. filehistories   → Conversion history
+5. configs         → System settings (singleton)
+6. auditlogs       → Admin actions (immutable)
+
+INDEXES:
+• users: email, status, role, email+status (compound)
+• sessions: user, jti, user+createdAt (compound), TTL
+• usermetadatas: user, user+createdAt (compound)
+• filehistories: userId, processedAt, userId+processedAt (compound)
+• auditlogs: userId, action, ipAddress, ipHash, userId+createdAt (compound)
+
+================================================================================
+                           API ENDPOINTS
+================================================================================
+
+AUTH (public + protected):
+POST   /api/auth/google              → Google OAuth
+POST   /api/auth/signup              → Register new user
+POST   /api/auth/login               → Login
+POST   /api/auth/forgot-password     → Request password reset
+POST   /api/auth/validate-reset-token→ Validate reset token
+POST   /api/auth/reset-password      → Reset password
+POST   /api/auth/refresh-token       → Refresh access token
+POST   /api/auth/logout              → Logout current session
+POST   /api/auth/logout-all          → Logout all devices
+GET    /api/auth/sessions            → Get active sessions
+DELETE /api/auth/sessions/:id        → Revoke specific session
+
+USERS (protected):
+GET    /api/users/                   → Get current user profile
+PUT    /api/users/profile            → Update profile
+
+HISTORY (protected):
+GET    /api/history/                 → Get conversion history
+
+CONVERSION (protected):
+POST   /api/conversion/batch         → Batch file conversion
+
+AI FEATURES (public + protected):
+POST   /api/chat/                    → AI chatbot
+POST   /api/summarize/summarize-pdf  → PDF summarization
+
+ADMIN (admin only):
+GET    /api/admin/stats              → Dashboard stats
+GET    /api/admin/jobs               → All conversion jobs
+GET    /api/admin/users              → All users (with search)
+PUT    /api/admin/users/:id          → Update user
+GET    /api/admin/config             → Get system config
+PUT    /api/admin/config             → Update system config
+GET    /api/admin/audit-logs         → Audit logs
+DELETE /api/admin/audit-logs/:id     → (Blocked - immutable)
+
+================================================================================

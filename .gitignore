@@ -1,0 +1,162 @@
+# ===========================
+# 🔐 SECURITY & SECRETS
+# ===========================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets.json
+credentials.json
+config/secrets.*
+
+# ===========================
+# 🗂️ DEPENDENCIES (Never commit these)
+# ===========================
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-error.log
+.pnpm-store/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+pip-delete-this-directory.txt
+
+# FastAPI / Uvicorn
+*.log
+uvicorn.log
+
+# ===========================
+# 🤖 ML / AI MODEL FILES (CRITICAL!)
+# ===========================
+# Large model files (GitHub limit: 100MB)
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pb
+*.ckpt
+*.mlmodel
+
+# Model cache folders
+*.cache/
+torch_cache/
+.huggingface/
+transformers_cache/
+model_cache/
+
+# Dataset files (if large)
+*.csv
+*.parquet
+*.arrow
+data/raw/
+data/processed/
+!data/.gitkeep
+
+# Jupyter / Colab
+.ipynb_checkpoints/
+*.ipynb
+*.pkl
+
+# ===========================
+# 🎨 FRONTEND (React/Vite)
+# ===========================
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===========================
+# ⚙️ BACKEND (Node/Express)
+# ===========================
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage (if you use testing)
+coverage/
+.nyc_output/
+
+# ===========================
+# 🗄️ DATABASE & STORAGE
+# ===========================
+# Local database files
+*.sqlite
+*.db
+data/mongodb/
+mongo-data/
+
+# Cloudinary / Upload temp files
+uploads/
+temp/
+tmp/
+!uploads/.gitkeep
+
+# ===========================
+# 🧪 TESTING & DEBUG
+# ===========================
+*.test.js
+*.spec.js
+__tests__/
+test/
+tests/
+.mocharc.integration.cjs      
+.mocharc.unit.cjs
+sinon-21.0.2.tgz
+
+# ===========================
+# 📦 PACKAGE MANAGER LOCKS (Optional)
+# ===========================
+# Keep package-lock.json or yarn.lock if you want reproducible builds
+# But ignore if you prefer teammates to install latest:
+# package-lock.json
+# yarn.lock
+# poetry.lock
+# Pipfile.lock
+
+# ===========================
+# 🚫 AI MICROSERVICES SPECIFIC
+# ===========================
+ai_microservices/models/
+ai_microservices/*.pt
+ai_microservices/*.bin
+ai_microservices/cache/
+ai_microservices/temp/
+!ai_microservices/.gitkeep
+
+# ===========================
+# ✅ KEEP THESE (Don't ignore)
+# ===========================
+
