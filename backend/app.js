@@ -1,5 +1,4 @@
 // backend/app.js
-
 import express from 'express';
 import crypto from 'crypto';
 import path from 'path';
@@ -35,6 +34,14 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+
+// ✅ Trust the first proxy (Render/Railway/Nginx/Cloudflare)
+// Without this: req.ip = proxy IP, rate limiting breaks in production
+app.set('trust proxy', 1);
+
+// ✅ Never tell attackers you use Express
+// Helmet does this too but being explicit is safer
+app.disable('x-powered-by');
 
 // --- REQUEST ID MIDDLEWARE ---
 // Attaches a unique ID to every request so you can trace
