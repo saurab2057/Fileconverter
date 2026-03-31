@@ -21,6 +21,7 @@ import SignUpForm from '@/features/authpages/Signup';
 import LoginForm from '@/features/authpages/Login';
 import ResetPasswordPage from '@/features/authpages/Resetpassword';
 import ForgotPasswordPage from '@/features/authpages/Forgetpassword';
+import PasskeyLogin     from '@/features/authpages/PasskeyLogin';
 
 // ── Dynamic pages (replaces all individual converter/compressor pages) ───────
 import DynamicConverterPage from '@/features/conversion/pages/DynamicConverterPage';
@@ -75,6 +76,7 @@ function App() {
                 {/* --- Auth Routes --- */}
                 <Route path="/login"           element={<LoginForm />} />
                 <Route path="/signup"          element={<SignUpForm />} />
+                <Route path="/passkey-login"   element={<PasskeyLogin />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password"  element={<ResetPasswordPage />} />
 

@@ -1,0 +1,750 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    FILECONVERT PRO — COMPLETE PROJECT DOCUMENTATION
+                              Generated: March 18, 2026
+═══════════════════════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. PROJECT OVERVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Name        : FileConvert Pro
+  Type        : Full-Stack SaaS Web Application
+  Purpose     : File conversion, compression, AI summarization, and AI
+                chatbot tools — with full authentication, admin panel,
+                passkey (WebAuthn) support, and a Python AI microservice.
+  Dev URLs    : http://localhost:5000  (Node.js backend)
+                http://localhost:5173  (React frontend)
+                http://localhost:8000  (FastAPI AI microservice)
+  Database    : MongoDB (local dev) — database name: fileconverter
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. ARCHITECTURE — THREE SERVICES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ┌─────────────────┐         ┌─────────────────┐        ┌──────────────────┐
+  │   React Frontend │ ──────► │  Node.js Backend │ ─────► │ FastAPI AI       │
+  │   (Vite)         │  HTTP   │  (Express)       │  HTTP  │ Microservice     │
+  │   Port 5173      │ ◄────── │  Port 5000       │ ◄───── │ (Python)         │
+  └─────────────────┘         └────────┬─────────┘        │ Port 8000        │
+                                        │                   └──────────────────┘
+                                        │ Mongoose
+                                        ▼
+                               ┌─────────────────┐
+                               │    MongoDB       │
+                               │  fileconverter   │
+                               └─────────────────┘
+
+  Communication:
+  - Frontend ──► Backend   : REST API + JWT Bearer token + httpOnly cookies
+  - Backend  ──► AI Service: Internal HTTP calls with INTERNAL_API_KEY header
+  - Backend  ──► MongoDB   : Mongoose ODM
+  - Backend  ──► Cloudinary: File storage and delivery
+  - Backend  ──► CloudConvert: Heavy file format conversions
+  - Backend  ──► Resend    : Transactional email (password reset)
+  - AI Service ──► HuggingFace: Llama 3 chat model (remote API)
+  - AI Service ──► Local Qwen: Qwen2.5-0.5B-Instruct (local model on disk)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. BACKEND — NODE.JS + EXPRESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ENTRY POINT
+  ─────────────────────────────────────────────────────────────────────────────
+  index.js
+    - Loads and validates ALL environment variables at startup
+      (halts if critical secrets are missing)
+    - Connects to MongoDB
+    - Initializes default Config document
+    - Registers cron jobs
+    - Starts Express server
+    - Handles graceful shutdown (SIGTERM, SIGINT)
+    - Cluster mode in production (one worker per CPU core)
+    - Global unhandledRejection + uncaughtException handlers
+
+  app.js
+    - Mounts all middleware (CORS, Helmet, rate limiting, cookieParser)
+    - Mounts all routes under /api/*
+    - Serves React frontend build (catch-all)
+    - Global error handler
+
+
+  ROUTES & CONTROLLERS
+  ─────────────────────────────────────────────────────────────────────────────
+  /api/auth          authRoute.js       authController.js
+                                        passwordController.js
+                                        sessionController.js
+    POST /signup              Register new user (email + password)
+    POST /login               Login with email + password + reCAPTCHA
+    POST /google              Login / register with Google OAuth
+    POST /forgot-password     Send password reset email via Resend
+    POST /validate-reset-token Validate reset token from email link
+    POST /reset-password      Set new password
+    POST /refresh-token       Rotate refresh token, issue new access token
+    POST /logout              Clear session + refresh cookie
+    POST /logout-all          Revoke ALL sessions for this user
+    GET  /sessions            List all active sessions
+    DELETE /sessions/:id      Revoke a specific session
+
+  /api/passkeys      passkeyRoute.js    passkeyController.js
+    POST /register/start      Generate WebAuthn registration challenge
+    POST /register/finish     Verify credential, save passkey to DB
+    POST /login/start         Generate WebAuthn authentication challenge
+    POST /login/finish        Verify assertion, issue JWT
+    GET  /                    List user's passkeys (metadata only)
+    PATCH /:id/label          Rename a passkey label
+    DELETE /:id               Delete a passkey
+
+  /api/user          userRoute.js       userController.js
+    GET  /profile             Get current user profile
+    PUT  /profile             Update name / profile picture
+    DELETE /account           Delete own account (GDPR)
+
+  /api/convert       conversionRoute.js conversionController.js
+    POST /                    Convert file (image, video, audio, PDF)
+    Uses: Cloudinary + CloudConvert
+
+  /api/compress      compressionRoute.js compressionController.js
+    POST /                    Compress image or PDF
+    Uses: Cloudinary
+
+  /api/history       historyRoute.js    historyController.js
+    GET  /                    Paginated file conversion/compression history
+
+  /api/ai            aisummarizerRoute.js summarizerController.js
+    POST /summarize           Send PDF text to FastAPI microservice
+    Proxies to: http://localhost:8000/summarize
+
+  /api/chat          chatbotRoute.js    chatbotController.js
+    POST /                    Send message to AI chatbot
+    Proxies to: http://localhost:8000/chat
+
+  /api/admin         adminRoute.js      adminController.js
+    GET  /stats               Dashboard stats (users, jobs, server load)
+    GET  /users               Paginated user list with filters
+    PUT  /users/:id           Update user (role, status)
+    DELETE /users/:id         Permanently delete user + all their data
+    GET  /jobs                Paginated file history (all users)
+    DELETE /jobs/:id          Delete a job record
+    GET  /audit-logs          Paginated compliance audit logs
+    GET  /activity-logs       Paginated user activity logs
+    GET  /config              Get system config
+    PUT  /config              Update system config
+    GET  /system              Server health + metrics
+
+
+  MIDDLEWARE STACK
+  ─────────────────────────────────────────────────────────────────────────────
+  security.js         CORS (strict origin whitelist) + Helmet (10+ headers)
+                      HSTS 2 years, CSP, X-Powered-By removed
+  rateLimiter.js      Per-route rate limiting (express-rate-limit)
+                        authLimiter       5 req/min
+                        passkeyLimiter    10 req/min (userId or IP key)
+                        conversionLimiter 10 req/min (userId key)
+                        compressionLimiter 10 req/min (userId key)
+                        chatLimiter       10 req/min
+                        summarizeLimiter  5 req/min
+                        adminLimiter      100 req/15min
+                        userReadLimiter   60 req/min
+                        userWriteLimiter  15 req/min
+  authMiddleware.js   JWT verification, fresh user fetch, status check,
+                      passwordChangedAt invalidation, isAdmin guard
+  recaptchaMiddleware.js  Google reCAPTCHA v3 verification (score >= 0.7)
+  validation.js       express-validator rules for all auth routes
+  auditLogger.js      logAdminAction() + logUserActivity() helpers
+  collectUserMetadata.js  IP geolocation + UA parsing → UserMetadata upsert
+  fileUpload.js       Multer config for file uploads
+  pdfProcessor.js     PDF text extraction for summarizer
+  errorHandling.js    AppError class + globalErrorHandler middleware
+
+
+  MODELS (MongoDB / Mongoose)
+  ─────────────────────────────────────────────────────────────────────────────
+  User.js
+    Fields: name, email, password (bcrypt, select:false), authProvider
+            (email|google), status (active|banned), role (user|admin),
+            profilePictureUrl, profilePicturePublicId, passwordChangedAt,
+            bannedAt, fileHistory[], timestamps
+    Hooks:  pre('save') → bcrypt hash password, set passwordChangedAt
+            pre('findOneAndDelete') → cascade delete Passkeys
+    Indexes: email+status, role+status
+
+  Passkey.js
+    Fields: user (ref), credentialID (unique), credentialPublicKey,
+            counter, deviceType (mobile|desktop|tablet|unknown),
+            deviceName (auto from UA), label (user-editable, max 50),
+            lastUsed, timestamps
+    Hooks:  pre('save') → enforce max 5 passkeys per user
+    Indexes: user+createdAt
+
+  Session.js
+    Fields: user (ref), jti (unique), userAgent, ipHash, createdAt,
+            lastActive
+    TTL:    auto-expires after 7 days (MongoDB TTL index)
+    Indexes: user+createdAt
+
+  FileHistory.js
+    Fields: userId, filename, fileType, fileSize, operation, status,
+            filePath, outputPath, processedAt
+
+  AuditLog.js (IMMUTABLE)
+    Fields: userId, source (admin|system), action (enum), resource,
+            details, ipAddress, ipHash, userAgent, timestamps
+    Actions: USER_UPDATED, USER_BANNED, USER_DELETED, CONFIG_UPDATED,
+             JOB_DELETED, ADMIN_LOGIN
+    Hooks:  pre('save') → block modification
+            pre('deleteOne/deleteMany') → block deletion
+
+  ActivityLog.js
+    Fields: userId, action (enum), resource, details, ipAddress,
+            ipHash, userAgent, timestamps
+    Actions: USER_LOGIN, USER_CREATED, PASSWORD_RESET_REQUESTED,
+             PASSWORD_RESET_COMPLETED, SESSION_REVOKED,
+             PASSKEY_REGISTERED, PASSKEY_LOGIN, PASSKEY_LOGIN_FAILED,
+             PASSKEY_DELETED, PASSKEY_RENAMED
+
+  Config.js
+    Fields: maxFileSize, conversionLimit, (system-wide settings)
+
+  UserMetadata.js
+    Fields: user (ref), ipHash, location (country/region/city),
+            device (type/browser/os), userAgent
+
+  SECURITY MODULES
+  ─────────────────────────────────────────────────────────────────────────────
+  authSecurity.js     hashIP() — SHA-256 IP hashing for GDPR
+                      isTokenValidAfterChange() — password change check
+                      generateJti() — crypto UUID for session IDs
+
+  aiSecurity.js       MAX_CHAT_CHARS = 500
+                      MAX_SUMMARIZE_WORDS = 500
+                      MAX_SUMMARIZER_PAGES = 2
+                      MAX_SUMMARIZER_FILE_SIZE = 2MB
+                      CHAT_FORBIDDEN_PATTERNS — prompt injection regex list
+                      SUMMARIZER_FORBIDDEN_PATTERNS — subset
+                      sanitizeInput() — zero-width chars, Unicode, emoji
+                      sanitizeAiResponse() — strip HTML/script from AI output
+
+  fileSecurity.js     ALLOWED_MIME_TYPES — whitelist (video/audio/image/pdf)
+                      SVG blocked as input (can contain JS)
+                      validateFileSecurity() — fileTypeFromBuffer magic bytes,
+                      MIME vs extension mismatch check
+                      sanitizeFilename() — remove special chars / Unicode
+
+  CRON JOBS
+  ─────────────────────────────────────────────────────────────────────────────
+  cronJobs.js
+    autoDeleteBannedUsers — runs daily at midnight UTC
+      Finds users banned 30+ days ago
+      Deletes: Sessions, FileHistory (+ local files), UserMetadata, User
+      Passkeys cascade-deleted via User model hook
+      Logs: AuditLog (source: system)
+      Cluster guard: only runs on master process
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. FRONTEND — REACT + VITE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ROUTING (App.jsx)
+  ─────────────────────────────────────────────────────────────────────────────
+  Public Routes (inside MainLayout):
+    /                         HomePage
+    /convert/:from/:to        DynamicConverterPage
+    /compress/:type           DynamicCompressorPage
+    /pdf-to-summary           PdfToSummary
+
+  Auth Routes (no layout):
+    /login                    LoginForm
+    /signup                   SignUpForm
+    /forgot-password          ForgotPasswordPage
+    /reset-password           ResetPasswordPage
+    /passkey-login            PasskeyLogin  ← NEW
+
+  Protected Routes (ProtectedRoute guard):
+    /dashboard                UserDashboard
+
+  Admin Routes (AdminRoute guard):
+    /admin/*                  AdminMainLayout
+
+  Fallback:
+    /error/:code              NotFound
+    /403                      NotFound (403)
+    *                         NotFound
+
+  STATE MANAGEMENT
+  ─────────────────────────────────────────────────────────────────────────────
+  AuthContext.jsx
+    - Stores: user, isAuthenticated, authLoading
+    - login(token, userData) — sets JWT in memory + Axios header
+    - logout(shouldNotifyServer) — clears token, navigates to /
+    - updateUser(newData) — for profile updates
+    - Auto-refresh on mount via /api/auth/refresh-token
+    - Event listeners: logout-event, session-refreshed, pageshow (bfcache)
+
+  React Query (TanStack Query)
+    - staleTime: 5 minutes
+    - cacheTime: 30 minutes
+    - refetchOnWindowFocus: false
+    - Used for: sessions, passkeys, file history, admin data
+
+  ThemeContext — dark/light mode toggle
+
+  API CLIENT (api.jsx)
+    - Axios instance with baseURL + withCredentials: true
+    - Response interceptor: auto-refresh on 401
+    - Refresh guard: prevents concurrent refresh calls (refreshPromise)
+    - On refresh failure: fires logout-event or redirects to /error/503
+
+  PAGES & COMPONENTS
+  ─────────────────────────────────────────────────────────────────────────────
+  Auth Pages:
+    Login.jsx           Email + password form, reCAPTCHA v3, Google OAuth
+                        "Continue with Passkey" button → /passkey-login
+                        autocomplete="username webauthn" on email field
+    PasskeyLogin.jsx    Dedicated passkey login page
+                        Email input → /api/passkeys/login/start
+                        Browser biometric/PIN prompt
+                        Status states: idle/loading/success/error/no_passkey
+                        Friendly amber box if no passkey registered
+    Signup.jsx          Name + email + password + reCAPTCHA
+    ForgotPassword.jsx  Email input → reset email
+    ResetPassword.jsx   New password form (via token from email)
+
+  User Dashboard (UserDashboard.jsx):
+    Tabs:
+      ActivityTab.jsx     File conversion/compression history
+      SettingTab.jsx      Profile settings, avatar upload
+      SecurityTab.jsx     Passkeys + Active sessions + Sign out everywhere
+
+  SecurityTab.jsx (full passkey management):
+    Passkeys section:
+      - List: deviceType icon, label, deviceName, last used, date added
+      - Rename: inline edit with Save/Cancel, Enter/Escape keyboard support
+      - Delete: single click, spinner, list refreshes
+      - Add Passkey: triggers browser prompt directly
+        → NotAllowedError  : "Passkey prompt was cancelled."
+        → InvalidStateError: "A passkey for this device is already registered."
+        → AbortError       : "Passkey prompt timed out."
+      - Max 5 warning replaces Add button when limit reached
+    Sessions section:
+      - Current session badge
+      - Revoke individual sessions
+    Sign out everywhere button
+
+  Admin Panel:
+    AdminDashboard.jsx    Stats: total users, jobs, server load
+    UserTable.jsx         Paginated user list
+    UserActions.jsx       Ban, unban, delete, role change
+    AuditLogs.jsx         Compliance audit log viewer
+    JobMonitor.jsx        File conversion job monitor
+    SystemConfig.jsx      System settings editor
+    Sidebar.jsx           Admin navigation
+
+  Shared Components:
+    Header.jsx            Navigation, theme toggle, user menu
+    Footer.jsx            Site footer
+    MainLayout.jsx        Wraps public pages
+    HelpChatbot.jsx       Floating AI chat widget
+    ChatWindow.jsx        Chat message thread UI
+    ChatMessage.jsx       Individual message bubble
+    Toast.jsx             Notification toasts
+    DeleteModal.jsx       Confirmation dialog
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. AI MICROSERVICE — PYTHON + FASTAPI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Runtime     : Python (FastAPI + Uvicorn)
+  Port        : 8000
+  Auth        : INTERNAL_API_KEY header (shared secret with Node backend)
+  Deployment  : Docker (Dockerfile included)
+
+  FILES
+  ─────────────────────────────────────────────────────────────────────────────
+  main.py
+    - FastAPI app setup with lifespan (model warm-up at startup)
+    - LimitRequestSizeMiddleware — blocks requests > 1MB
+    - CORS — only allows NODE_BACKEND_URL origins
+    - verify_internal_api_key dependency — protects /chat and /summarize
+    - Error handlers: 404, 422, 500
+
+  config.py
+    - Loads HF_TOKEN and INTERNAL_API_KEY from .env
+    - Initializes HuggingFace InferenceClient (timeout 30s)
+    - CHAT_MODEL    = "meta-llama/Meta-Llama-3-8B-Instruct" (remote HF API)
+    - SUMMARY_MODEL = "Qwen2.5-0.5B-Instruct" (local model on disk)
+    - MAX_CHAT_TOKENS = 256
+
+  models.py (Pydantic)
+    ChatRequest     message: str (1–1000 chars, stripped)
+    ChatResponse    reply, model, tokens_used
+    SummarizeRequest text: str (min 50 chars)
+    SummarizeResponse summary, word_count, model
+    HealthResponse  status, service, version, chat_model, summary_model
+
+  chatbot.py
+    - Loads website_context.txt ONCE at startup
+    - SYSTEM_PROMPT restricts AI to website info only
+      (prevents off-topic answers and hallucination)
+    - Temperature 0.3 — focused, less creative
+    - process_chat() → HuggingFace remote API → clean_response()
+    - Error handling: rate limit, 401, timeout, generic
+
+  summarizer.py
+    - SummarizerModel singleton — loads Qwen2.5-0.5B-Instruct from disk
+    - asyncio.Lock() — prevents concurrent inference (memory safety)
+    - Model loaded ONCE at startup via lifespan event
+    - CUDA if available, fallback to CPU
+    - float16 on GPU, float32 on CPU
+    - 500 word limit enforced before inference
+    - Anti-hallucination system prompt: "use ONLY information in the text"
+    - Temperature 0.2, top_p 0.85, max_new_tokens 256
+    - Decodes only generated tokens (slices input_ids length)
+
+  ENDPOINTS
+  ─────────────────────────────────────────────────────────────────────────────
+  GET  /              Service info (public)
+  GET  /health        Health check — status, models, version (public)
+  POST /chat          Chat with Llama 3 (requires INTERNAL_API_KEY)
+  POST /summarize     Summarize text with Qwen local model (requires key)
+
+  DEPENDENCIES (requirements.txt)
+  ─────────────────────────────────────────────────────────────────────────────
+  fastapi==0.133.0
+  uvicorn[standard]==0.41.0
+  huggingface-hub==1.4.1
+  python-dotenv==1.2.1
+  pydantic==2.12.5
+  torch==2.10.0
+  transformers==5.2.0
+  accelerate==1.12.0
+  safetensors==0.7.0
+  tokenizers==0.22.2
+  numpy==2.4.2
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. EXTERNAL SERVICES & INTEGRATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Service           Purpose                         Used In
+  ─────────────────────────────────────────────────────────────────────────────
+  MongoDB           Primary database                Backend (Mongoose)
+  Cloudinary        File storage + image compression Backend (conversion/compression)
+  CloudConvert      Heavy format conversions         Backend (conversionController)
+  Resend            Transactional email              Backend (passwordController)
+  Google OAuth      Social login                     Backend + Frontend
+  Google reCAPTCHA v3  Bot protection               Backend + Frontend
+  HuggingFace API   Llama 3 chat model (remote)     AI Microservice (chatbot.py)
+  HuggingFace Hub   Qwen2.5 local model download    AI Microservice (summarizer.py)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. SECURITY SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Authentication & Session
+  ─ JWT access tokens (15min, memory only)
+  ─ Refresh tokens (7 days, httpOnly cookie, rotated on use)
+  ─ JTI — unique session ID, allows per-session revocation
+  ─ bcrypt password hashing (salt rounds 10)
+  ─ Google OAuth with provider conflict detection
+  ─ WebAuthn Passkeys — biometric/PIN, replay counter, duplicate device blocked
+  ─ passwordChangedAt invalidates old tokens instantly
+  ─ Session list + revocation in user dashboard
+  ─ Logout all devices
+
+  Bot & Abuse Protection
+  ─ reCAPTCHA v3 on signup, login, forgot-password (threshold 0.7)
+  ─ Rate limiting on every route (per-user ID or per-IP)
+
+  HTTP & Network
+  ─ Helmet.js — 10+ security headers
+  ─ HSTS 2 years (includeSubDomains + preload)
+  ─ Strict Content Security Policy
+  ─ CORS strict origin whitelist
+  ─ Express fingerprint hidden
+  ─ Request ID on every request (UUID)
+  ─ Trust proxy correctly configured
+
+  File Security
+  ─ Magic byte MIME validation (fileTypeFromBuffer)
+  ─ MIME vs extension mismatch check
+  ─ Filename sanitization
+  ─ SVG blocked as upload input
+  ─ File size limits on body + files
+  ─ Strict MIME whitelist (video/audio/image/pdf only)
+
+  AI Security (Prompt Injection)
+  ─ Forbidden pattern regex list (prompt injection, SQL, XSS)
+  ─ Input sanitization (zero-width chars, Unicode, emojis)
+  ─ Character/word/page/size limits on AI inputs
+  ─ AI response sanitization (strips HTML/script tags)
+  ─ System prompt restricts chatbot to website context only
+  ─ Low temperature on both models (reduces hallucination)
+
+  AI Microservice Security
+  ─ INTERNAL_API_KEY shared secret (backend ↔ microservice)
+  ─ CORS — only Node backend URL allowed
+  ─ Request body size limit 1MB
+  ─ asyncio.Lock on model inference (prevents race conditions)
+
+  Compliance & Audit
+  ─ IP hashing (SHA-256, GDPR Art.5)
+  ─ Immutable audit logs (cannot modify or delete)
+  ─ Activity logs for all user events
+  ─ GDPR right to erasure on account delete
+  ─ Auto-delete banned users after 30 days (cron)
+  ─ Cron cluster guard (runs on master only)
+
+  Admin Controls
+  ─ Role-based access (isAdmin middleware)
+  ─ Cannot delete last admin
+  ─ Cannot self-delete
+  ─ Ban blocks user instantly on next request
+  ─ Force logout any user
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. ENVIRONMENT VARIABLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Node.js Backend (.env)
+  ─────────────────────────────────────────────────────────────────────────────
+  REQUIRED IN ALL ENVIRONMENTS:
+    MONGO_URI                   MongoDB connection string
+    ACCESS_SECRET_KEY           JWT access token secret (min 32 chars)
+    REFRESH_SECRET_KEY          JWT refresh token secret (min 32 chars)
+    COOKIE_SECRET_KEY           Cookie signing secret (min 32 chars)
+    RESET_PASSWORD_SECRET_KEY   Password reset token secret (min 32 chars)
+
+  REQUIRED IN PRODUCTION:
+    CLOUDINARY_CLOUD_NAME       Cloudinary credentials
+    CLOUDINARY_API_KEY
+    CLOUDINARY_API_SECRET
+    CLOUDCONVERT_API_KEY        CloudConvert API key
+    RESEND_API_KEY              Resend email API key
+    FRONTEND_URL                Production frontend URL (https://...)
+    RECAPTCHA_SECRET_KEY        Google reCAPTCHA v3 secret
+    PORT                        Server port
+
+  PASSKEY (WebAuthn):
+    RP_NAME                     App display name (e.g. "FileConvert Pro")
+    RP_ID                       Domain (e.g. "localhost" or "yourdomain.com")
+    RP_ORIGIN                   Full frontend origin (e.g. "http://localhost:5173")
+
+  Python AI Microservice (.env)
+  ─────────────────────────────────────────────────────────────────────────────
+    HF_TOKEN                    HuggingFace API token
+    INTERNAL_API_KEY            Shared secret with Node backend
+    NODE_BACKEND_URL            Allowed CORS origin (e.g. "http://localhost:5000")
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. PASSKEY FEATURE — COMPLETE FLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  REGISTRATION (from Security Tab, must be logged in)
+  ─ POST /api/passkeys/register/start  → challenge issued, stored in cookie
+  ─ Browser biometric/PIN prompt
+  ─ POST /api/passkeys/register/finish → credential saved, label auto-set
+  ─ Label auto-generated from User-Agent (e.g. "Chrome on Windows")
+  ─ Duplicate device check: same deviceName blocked with friendly error
+  ─ Max 5 passkeys per user (pre-save hook on Passkey model)
+  ─ Activity logged: PASSKEY_REGISTERED
+
+  LOGIN (from /passkey-login page)
+  ─ User types email
+  ─ POST /api/passkeys/login/start  → challenge issued
+  ─ Browser biometric/PIN prompt
+  ─ POST /api/passkeys/login/finish → JWT issued (same as normal login)
+  ─ Replay attack counter updated
+  ─ If no passkeys: 404 + amber warning box with hint to add from Dashboard
+  ─ Activity logged: PASSKEY_LOGIN or PASSKEY_LOGIN_FAILED
+
+  MANAGEMENT (Security Tab)
+  ─ View: device icon, label, deviceName, last used, date added
+  ─ Rename: inline edit (Enter to save, Escape to cancel)
+  ─ Delete: user can remove any passkey (e.g. lost device)
+  ─ "Continue with Passkey" button always visible on Login page
+
+  RULES
+  ─ Max 5 passkeys per user
+  ─ Only label is editable (cryptographic key is immutable)
+  ─ User can delete their own passkeys
+  ─ Admin cannot manage passkeys (only cascade-deleted with user)
+  ─ Passkeys auto-cascade deleted when user account is deleted
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. FILE STRUCTURE OVERVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  backend/
+  ├── index.js                      Entry point
+  ├── app.js                        Express app + middleware + routes
+  ├── cronJobs.js                   Scheduled jobs
+  ├── config/
+  │   └── db.js                     MongoDB connection
+  ├── models/
+  │   ├── User.js                   User schema + cascade delete hook
+  │   ├── Passkey.js                WebAuthn credentials
+  │   ├── Session.js                JWT sessions
+  │   ├── FileHistory.js            File conversion records
+  │   ├── AuditLog.js               Immutable admin audit log
+  │   ├── ActivityLog.js            User activity log
+  │   ├── Config.js                 System config
+  │   └── UserMetadata.js           IP + device + location
+  ├── controllers/
+  │   ├── Authentication/
+  │   │   ├── authController.js     login, signup, google, handleLoginSuccess
+  │   │   ├── passwordController.js forgot/reset password
+  │   │   ├── sessionController.js  refresh, logout, sessions
+  │   │   └── passkeyController.js  WebAuthn full flow
+  │   ├── adminController.js
+  │   ├── chatbotController.js
+  │   ├── compressionController.js
+  │   ├── conversionController.js
+  │   ├── historyController.js
+  │   ├── summarizerController.js
+  │   └── userController.js
+  ├── routes/
+  │   ├── authRoute.js
+  │   ├── passkeyRoute.js
+  │   ├── userRoute.js
+  │   ├── conversionRoute.js
+  │   ├── compressionRoute.js
+  │   ├── historyRoute.js
+  │   ├── chatbotRoute.js
+  │   ├── aisummarizerRoute.js
+  │   └── adminRoute.js
+  ├── middleware/
+  │   ├── security.js               CORS + Helmet config
+  │   ├── rateLimiter.js            All rate limiters
+  │   ├── authMiddleware.js         JWT verify + isAdmin
+  │   ├── validation.js             express-validator rules
+  │   ├── recaptchaMiddleware.js    reCAPTCHA v3
+  │   ├── auditLogger.js            logAdminAction + logUserActivity
+  │   ├── collectUserMetadata.js    IP geo + UA metadata
+  │   ├── fileUpload.js             Multer config
+  │   ├── pdfProcessor.js           PDF text extraction
+  │   └── errorHandling.js         AppError + globalErrorHandler
+  └── utils/
+      ├── authSecurity.js           hashIP, generateJti, isTokenValid
+      ├── aiSecurity.js             AI input/output sanitization
+      └── fileSecurity.js           MIME validation, filename sanitize
+
+  frontend/
+  ├── src/
+  │   ├── App.jsx                   Router + providers
+  │   ├── main.jsx                  React entry point
+  │   ├── lib/
+  │   │   ├── api.jsx               Axios client + interceptor
+  │   │   ├── AuthContext.jsx       Auth state + token management
+  │   │   ├── ProtectedRoute.jsx    User route guard
+  │   │   └── AdminRoute.jsx        Admin route guard
+  │   ├── features/
+  │   │   ├── authpages/
+  │   │   │   ├── Login.jsx
+  │   │   │   ├── PasskeyLogin.jsx
+  │   │   │   ├── Signup.jsx
+  │   │   │   ├── Forgetpassword.jsx
+  │   │   │   └── Resetpassword.jsx
+  │   │   ├── conversion/
+  │   │   │   └── pages/DynamicConverterPage.jsx
+  │   │   ├── compression/
+  │   │   │   └── pages/DynamicCompressorPage.jsx
+  │   │   └── Adminpages/
+  │   │       ├── AdminMainLayout.jsx
+  │   │       ├── AdminDashboard.jsx
+  │   │       ├── AuditLogs.jsx
+  │   │       ├── JobMonitor.jsx
+  │   │       ├── SystemConfig.jsx
+  │   │       ├── UserTable.jsx
+  │   │       ├── UserActions.jsx
+  │   │       ├── DeleteModal.jsx
+  │   │       └── Sidebar.jsx
+  │   └── components/
+  │       ├── layout/
+  │       │   ├── Home.jsx
+  │       │   ├── MainLayout.jsx
+  │       │   ├── Header.jsx
+  │       │   ├── Footer.jsx
+  │       │   └── Dashboard/
+  │       │       ├── UserDashboard.jsx
+  │       │       ├── SecurityTab.jsx
+  │       │       ├── SettingTab.jsx
+  │       │       └── ActivityTab.jsx
+  │       └── common/
+  │           ├── Toast.jsx
+  │           ├── HelpChatbot.jsx
+  │           ├── ChatWindow.jsx
+  │           └── ChatMessage.jsx
+
+  ai_microservice/
+  ├── main.py                       FastAPI app + endpoints + middleware
+  ├── config.py                     HF client + model config + env
+  ├── models.py                     Pydantic request/response models
+  ├── chatbot.py                    Llama 3 chat logic (HF remote API)
+  ├── summarizer.py                 Qwen2.5 local model inference
+  ├── requirements.txt              Python dependencies
+  ├── Dockerfile                    Container build
+  └── data/
+      └── website_context.txt       Context file for chatbot system prompt
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. HOW TO RUN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Backend (Node.js)
+  ─────────────────────────────────────────────────────────────────────────────
+    cd backend
+    npm install
+    node index.js          # or: npm run dev
+
+    Health check: GET http://localhost:5000/api/health
+
+  Frontend (React)
+  ─────────────────────────────────────────────────────────────────────────────
+    cd frontend
+    npm install
+    npm run dev
+
+    Opens: http://localhost:5173
+
+  AI Microservice (Python)
+  ─────────────────────────────────────────────────────────────────────────────
+    cd ai_microservice
+    pip install -r requirements.txt
+    uvicorn main:app --host 0.0.0.0 --port 8000
+
+    OR with Docker:
+    docker build -t ai-microservice .
+    docker run -p 8000:8000 --env-file .env ai-microservice
+
+    Health check: GET http://localhost:8000/health
+    API docs:     GET http://localhost:8000/docs
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+12. NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  - FastAPI files were provided separately (not in the main project folder)
+  - No FastAPI files are present in the project knowledge base
+  - Facebook and GitHub login buttons exist in Login.jsx but are
+    not yet implemented (console.log placeholders only)
+  - The reCAPTCHA site key is hardcoded in Login.jsx and Signup.jsx
+    (should be moved to .env / VITE_ env variable for production)
+  - website_context.txt must be created manually in ai_microservice/data/
+    for the chatbot to have website knowledge
+  - Qwen2.5-0.5B-Instruct model must be downloaded manually to
+    ai_microservice/model/Qwen2.5-0.5B-Instruct/ directory
+
+═══════════════════════════════════════════════════════════════════════════════
+                              END OF DOCUMENTATION
+═══════════════════════════════════════════════════════════════════════════════
