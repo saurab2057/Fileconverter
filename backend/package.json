@@ -24,6 +24,7 @@
   "description": "",
   "dependencies": {
     "@huggingface/inference": "^4.4.0",
+    "@simplewebauthn/server": "^13.3.0",
     "axios": "^1.10.0",
     "bcrypt": "^6.0.0",
     "chai-http": "^5.1.2",
@@ -50,7 +51,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.5",
     "resend": "^4.6.0",
-    "ua-parser-js": "^2.0.4",
+    "ua-parser-js": "^2.0.9",
     "unpdf": "^1.4.0",
     "winston": "^3.17.0"
   },

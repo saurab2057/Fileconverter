@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, {ipKeyGenerator} from 'express-rate-limit';
 
 const isTest = () => process.env.NODE_ENV === 'test';
 
@@ -74,6 +74,25 @@ export const compressionLimiter = rateLimit({
   skip: (req) => isTest() || !req.user || !req.user._id,
   keyGenerator: (req) => req.user._id.toString(),
   message: { message: 'Too many compression requests. Please wait 1 minute.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Tighter window than authLimiter because WebAuthn challenges
+// are short-lived and repeated failures indicate probing.
+// ─────────────────────────────────────────────────────────────
+export const passkeyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  skip: () => isTest(),
+  keyGenerator: (req) => {
+    if (req.user?._id) return `user_${req.user._id.toString()}`;
+    // Use req.ip directly — express-rate-limit handles IPv6 normalisation
+    // internally when validate.trustProxy is set correctly
+    return ipKeyGenerator(req);
+  },
+  validate: { trustProxy: false },  // ← this suppresses the IPv6 warning
+  message: { message: 'Too many passkey attempts. Please wait 1 minute.' },
   standardHeaders: true,
   legacyHeaders: false,
 });

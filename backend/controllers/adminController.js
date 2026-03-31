@@ -413,7 +413,7 @@ export const deleteUser = async (req, res) => {
         await Session.deleteMany({ user: id });
         await FileHistory.deleteMany({ userId: id });
         await UserMetadata.deleteMany({ user: id });
-        await User.findByIdAndDelete(id);
+        await User.findByIdAndDelete(id);         //triggers passkey cascade in User.js hook
 
 
         // 🔒 Audit log

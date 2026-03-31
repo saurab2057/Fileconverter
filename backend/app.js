@@ -23,6 +23,8 @@ import historyRoutes from './routes/historyRoute.js';
 import adminRoutes from './routes/adminRoute.js';
 import aiRoutes from './routes/aisummarizerRoute.js';
 import compressionRoutes from './routes/compressionRoute.js'
+import passkeyRoutes from './routes/passkeyRoute.js';
+
 
 // 🔒 ERROR HANDLING IMPORTS (Updated path & exports)
 import { AppError, globalErrorHandler } from './middleware/errorHandling.js';
@@ -84,6 +86,7 @@ app.use('/api/compress', compressionRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/passkeys', passkeyRoutes);
 
 // --- SERVE FRONTEND (React App) ---
 app.use(express.static(path.join(__dirname, '../frontend/build'), { // ✅ Updated: client → frontend

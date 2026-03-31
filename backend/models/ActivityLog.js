@@ -13,11 +13,23 @@ const activityLogSchema = new mongoose.Schema({
     type: String,
     required: true,
     enum: [
+      // ── Auth ──────────────────────────────────────────────
       'USER_LOGIN',
       'USER_CREATED',
+ 
+      // ── Password ──────────────────────────────────────────
       'PASSWORD_RESET_REQUESTED',
       'PASSWORD_RESET_COMPLETED',
+ 
+      // ── Session ───────────────────────────────────────────
       'SESSION_REVOKED',
+ 
+      // ── Passkey ───────────────────────────────────────────
+      'PASSKEY_REGISTERED',     // User added a new passkey from Security tab
+      'PASSKEY_LOGIN',          // User logged in using a passkey
+      'PASSKEY_LOGIN_FAILED',   // Failed passkey verification attempt (wrong device, cloned key etc.)
+      'PASSKEY_DELETED',        // User deleted one of their passkeys
+      'PASSKEY_RENAMED',        // User renamed a passkey label
     ],
     index: true
   },

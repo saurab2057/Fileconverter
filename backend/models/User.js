@@ -97,5 +97,35 @@ UserSchema.pre('save', async function (next) {
   }
 });
 
+
+// ─────────────────────────────────────────────────────────────
+// CASCADE DELETE — when a user is deleted, remove all their
+// associated passkeys automatically.
+//
+// WHY HERE and not in adminController:
+//   Keeping it in the model means it fires regardless of HOW
+//   the user is deleted — admin panel, cron job, or any future
+//   code path. Single source of truth.
+//
+// NOTE: This hook fires on findByIdAndDelete() and deleteOne()
+//   calls on the User model.
+// ─────────────────────────────────────────────────────────────
+UserSchema.pre('findOneAndDelete', async function (next) {
+  try {
+    const user = await this.model.findOne(this.getFilter());
+    if (user) {
+      const Passkey = mongoose.model('Passkey');
+      const deleted = await Passkey.deleteMany({ user: user._id });
+      if (deleted.deletedCount > 0) {
+        console.log(`✅ Cascade deleted ${deleted.deletedCount} passkey(s) for user ${user._id}`);
+      }
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+
 const User = mongoose.model('User', UserSchema);
 export default User;
