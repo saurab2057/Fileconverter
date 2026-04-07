@@ -15,7 +15,9 @@
     "test:session": "mocha --config .mocharc.integration.cjs --grep \"Session\"",
     "test:password": "mocha --config .mocharc.integration.cjs --grep \"Password\"",
     "test:chatbot": "mocha --config .mocharc.integration.cjs --grep \"Chatbot\"",
-    "test:summarizer": "mocha --config .mocharc.integration.cjs --grep \"Summarizer\""
+    "test:summarizer": "mocha --config .mocharc.integration.cjs --grep \"Summarizer\"",
+    "test:compression": "mocha --config .mocharc.integration.cjs --grep \"Compression\"",
+    "test:passkey": "mocha --config .mocharc.integration.cjs --grep \"Passkey\""
   },
   "keywords": [],
   "author": "",
@@ -27,6 +29,7 @@
     "@simplewebauthn/server": "^13.3.0",
     "axios": "^1.10.0",
     "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "chai-http": "^5.1.2",
     "cloudconvert": "^3.0.0",
     "cloudinary": "^2.9.0",
@@ -60,6 +63,7 @@
     "mocha": "^11.7.5",
     "mongodb-memory-server": "^10.1.4",
     "nock": "^14.0.11",
+    "sinon": "^21.0.3",
     "supertest": "^7.2.2"
   }
 }

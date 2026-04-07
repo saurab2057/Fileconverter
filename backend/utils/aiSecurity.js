@@ -64,13 +64,20 @@ export const sanitizeAiResponse = (text) => {
   if (!text) return 'No response generated';
 
   return text
-    // remove script blocks
-    .replace(/<script.*?>.*?<\/script>/gis, '')
-    
-    // remove any remaining HTML tags
-    .replace(/<\/?[^>]+(>|$)/g, '')
-    
-    // collapse whitespace
+    // 1. Remove control / junk characters (optional cleanup)
+    .replace(/[^\x20-\x7E\n]/g, '') // removes weird unicode/control chars
+
+    // 2. Remove excessive symbol noise (optional)
+    .replace(/[$%#^*&]{3,}/g, '') // removes spammy symbol clusters
+
+    // 3. Encode HTML entities (CRITICAL for XSS)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+
+    // 4. Normalize whitespace
     .replace(/\s+/g, ' ')
     .trim();
 };
