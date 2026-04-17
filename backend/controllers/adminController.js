@@ -440,3 +440,29 @@ export const deleteAuditLog = (req, res) => {
         message: 'Audit logs are immutable and cannot be deleted. Contact security team for legal holds.'
     });
 };
+
+// --- GET AUDIT LOG CHAIN STATUS (lightweight — last 2 entries) ---
+export const getChainStatus = async (req, res) => {
+    try {
+        const status = await AuditLog.getChainStatus();
+        res.json(status);
+    } catch (error) {
+        console.error('Chain status error:', error);
+        res.status(500).json({ message: 'Error checking chain status.' });
+    }
+};
+ 
+// --- VERIFY FULL AUDIT LOG CHAIN (expensive — paginated by query params) ---
+// GET /api/admin/audit-logs/verify-chain?limit=1000
+export const verifyChain = async (req, res) => {
+    try {
+        const limit  = Math.min(parseInt(req.query.limit)  || 500,  5000);
+        const startTime = req.query.startTime ? new Date(req.query.startTime) : null;
+ 
+        const result = await AuditLog.verifyChain({ limit, startTime });
+        res.json(result);
+    } catch (error) {
+        console.error('Chain verify error:', error);
+        res.status(500).json({ message: 'Error verifying chain.' });
+    }
+};

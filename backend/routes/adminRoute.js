@@ -13,6 +13,8 @@ import {
     getActivityLogs,
     deleteAuditLog,
     deleteUser,
+    getChainStatus,
+    verifyChain,
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -37,6 +39,11 @@ router.get('/config', getConfig);
 
 // --- UPDATE SYSTEM CONFIGURATION (WITH VALIDATION) ---
 router.put('/config', validateConfigUpdate, updateConfig);
+
+// --- AUDIT LOG CHAIN INTEGRITY ---
+// Must be declared BEFORE the generic /audit-logs/:id route to avoid shadowing
+router.get('/audit-logs/chain-status', getChainStatus);
+router.get('/audit-logs/verify-chain', verifyChain);
 
 // --- GET AUDIT LOGS (PAGINATED + FILTERABLE) ---
 router.get('/audit-logs', getAuditLogs);

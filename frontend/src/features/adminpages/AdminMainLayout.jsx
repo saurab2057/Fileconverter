@@ -6,7 +6,7 @@ import AdminDashboard from '@/features/adminpages/AdminDashboard';
 import JobMonitor from '@/features/adminpages/JobMonitor';
 import UserManagement from '@/features/adminpages/UserManagement/index';
 import SystemConfig from '@/features/adminpages/SystemConfig';
-import AuditLogs from '@/features/adminpages/AuditLogs'; // 🔒 CRITICAL ADDITION
+import LogsManager from '@/features/adminpages/logs/index'; // 🔒 CRITICAL ADDITION
 import Sidebar from '@/features/adminpages/Sidebar';
 
 const AdminMainLayout = () => {
@@ -25,18 +25,9 @@ const AdminMainLayout = () => {
     localStorage.setItem('adminActiveTab', activeTab);
   }, [activeTab]);
 
-  if (authLoading) {
-    return <div className="p-8 text-center text-gray-600">Loading admin panel...</div>;
-  }
-
-  if (user?.role !== 'admin') {
-    return <Navigate to="/403" replace />;
-  }
-
   const handleLogout = () => {
     localStorage.removeItem('adminActiveTab');
     logout();
-    navigate('/');
   };
 
   // 🔒 RENDER CONTENT BASED ON ACTIVE TAB (ADDED audit-logs CASE)
@@ -45,7 +36,7 @@ const AdminMainLayout = () => {
       case 'dashboard': return <AdminDashboard />;
       case 'jobs': return <JobMonitor />;
       case 'users': return <UserManagement />;
-      case 'audit-logs': return <AuditLogs />; // 🔒 CRITICAL ADDITION
+      case 'audit-logs': return <LogsManager />; // 🔒 CRITICAL ADDITION
       case 'config': return <SystemConfig />;
       default: return <AdminDashboard />; // Fallback
     }
