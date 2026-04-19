@@ -103,14 +103,8 @@ const PdfToSummary = () => {
 
       setStatus('completed');
     } catch (error) {
-      const status = error.response?.status;
-
-      // ✅ Backend returned 500/503
-      if (status === 500 || status === 503) {
-        navigate(`/error/${status}`);
-        return;
-      }
       // ✅ Everything working but summary failed (400, 422, etc.)
+      // Other error is handled by api.jsx interceptor (500, 503)
       const msg = error.response?.data?.message || 'Failed to generate summary.';
       setErrorMessage(msg);
       setStatus('error');

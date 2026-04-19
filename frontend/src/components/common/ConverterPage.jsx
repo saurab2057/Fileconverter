@@ -1,170 +1,91 @@
-import React, { useState, useMemo } from 'react';
+// src/components/common/ConverterPage.jsx
+import React, { useState } from 'react';
 import { Settings, FileText, Loader, AlertCircle, XCircle, Download, Lock, UserPlus, X } from 'lucide-react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
-
-import apiClient from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import FileUploader from '@/components/common/FileUploader';
-
-const MAX_ALLOWED_FILES = 5;
+import { useFileBatch } from '@/hooks/useFileBatch';
+import { fileProcessingService } from '@/services/fileProcessingService';
+import { useToast } from '@/context/ToastContext';
 
 const ConverterPage = ({ fromFormat, toFormat, title, description, settingsComponent: SettingsComponent, defaultSettings }) => {
-
   const location = useLocation();
   const navigate = useNavigate();
   const { authLoading, isAuthenticated } = useAuth();
+  const toast = useToast();
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [files, setFiles] = useState(location.state?.initialFiles || []);
-  const [isConverting, setIsConverting] = useState(false);
-  const [conversionComplete, setConversionComplete] = useState(false);
   const [editingFileId, setEditingFileId] = useState(null);
-  const [uploadLimitExceeded, setUploadLimitExceeded] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingComplete, setProcessingComplete] = useState(false);
+
+  const {
+    files,
+    uploadLimitExceeded,
+    addFiles,
+    removeFile,
+    updateFileSettings,
+    updateFileStatus,
+    updateAllStatus,
+    resetBatch,
+    hasFiles,
+    canProcess,
+    maxAllowedFiles,
+    formatFileSize,
+  } = useFileBatch(defaultSettings);
+
+  // Initialize files from location state
+  React.useEffect(() => {
+    if (location.state?.initialFiles && files.length === 0) {
+      location.state.initialFiles.forEach(file => {
+        addFiles([file.file]);
+        // Update settings if they exist
+        if (file.settings) {
+          updateFileSettings(file.id, file.settings);
+        }
+      });
+    }
+  }, []);
 
   const startConversion = async () => {
-    setIsConverting(true);
-    setFiles(prev => prev.map(f => (f.status === 'ready' ? { ...f, status: 'converting' } : f)));
-
+    setIsProcessing(true);
     const filesToProcess = files.filter(f => f.status === 'ready');
-    if (filesToProcess.length === 0) {
-      setIsConverting(false);
-      return;
-    }
+    updateAllStatus('ready', 'converting');
 
     try {
-      const formData = new FormData();
+      const results = await fileProcessingService.batchConvert(filesToProcess, toFormat);
 
-      const settingsPayload = filesToProcess.map(file => ({
-        originalName: file.name,
-        settings: file.settings,
-      }));
-
-      filesToProcess.forEach(file => {
-        formData.append('files', file.file, file.name);
-      });
-
-      formData.append('settings', JSON.stringify(settingsPayload));
-      formData.append('toFormat', toFormat);
-
-      const response = await apiClient.post('/api/convert/batch', formData);
-      const results = response.data;
-
-      setFiles(prevFiles => {
-        const processedFiles = [...prevFiles];
-        let resultIndex = 0;
-
-        processedFiles.forEach((file, index) => {
-          if (file.status === 'converting') {
-            const result = results[resultIndex];
-            if (result) {
-              processedFiles[index] = {
-                ...file,
-                status: result.success ? 'completed' : 'error',
-                downloadUrl: result.downloadUrl || null,
-                errorMessage: result.message || null,
-              };
-            } else {
-              processedFiles[index] = { ...file, status: 'error', errorMessage: 'No result from server for this file.' };
-            }
-            resultIndex++;
-          }
-        });
-        return processedFiles;
-      });
-
-    } catch (error) {
-      console.error('An error occurred during the batch conversion request:', error);
-
-      const status = error.response?.status;
-      if (status === 500 || status === 503) {
-        navigate(`/error/${status}`);
-        return;
-      }
-
-      let errorMessage = 'An unknown server error occurred.';
-      if (error.response) {
-        if (error.response.data?.message) {
-          errorMessage = error.response.data.message;
+      filesToProcess.forEach((file, index) => {
+        const result = results[index];
+        if (result) {
+          updateFileStatus(file.id, result.success ? 'completed' : 'error', {
+            downloadUrl: result.downloadUrl || null,
+            errorMessage: result.message || null,
+          });
         } else {
-          errorMessage = `Server responded with status: ${error.response.status}`;
+          updateFileStatus(file.id, 'error', { errorMessage: 'No result from server.' });
         }
-      } else if (error.request) {
-        errorMessage = 'No response received from server. Please check your network connection.';
-      } else {
-        errorMessage = error.message || 'An unexpected error occurred.';
-      }
-
-      setFiles(prev => prev.map(f => (f.status === 'converting' ? { ...f, status: 'error', errorMessage } : f)));
+      });
+      setProcessingComplete(true);
+    } catch (error) {
+      // ✅ Backend returned 500/503 or network error
+      // Handled by api.jsx interceptor which shows toast and updates file statuses to 'error'
+      const errorMessage = error.response?.data?.message || 'Conversion failed.';
+      filesToProcess.forEach(file => {
+        updateFileStatus(file.id, 'error', { errorMessage });
+      });
+      toast.error(errorMessage);
+    } finally {
+      setIsProcessing(false);
     }
-
-    setIsConverting(false);
-    setConversionComplete(true);
   };
 
   const handleStartOver = () => {
-    setFiles([]);
-    setConversionComplete(false);
-    setIsConverting(false);
-    setUploadLimitExceeded(false);
+    resetBatch();
+    setProcessingComplete(false);
   };
-
-  const handleSaveSettings = (fileId, newSettings) => {
-    setFiles(prevFiles =>
-      prevFiles.map(file =>
-        file.id === fileId ? { ...file, settings: newSettings } : file
-      )
-    );
-  };
-
-  // BUG FIX: FileUploader now passes a plain Array, so no Array.from() needed —
-  // but Array.from(array) is harmless and kept for safety.
-  const handleFilesSelected = (fileList) => {
-    const filesToAdd = Array.from(fileList);
-    const availableSlots = MAX_ALLOWED_FILES - files.length;
-
-    if (filesToAdd.length > availableSlots) {
-      setUploadLimitExceeded(true);
-      const limited = filesToAdd.slice(0, availableSlots);
-      const newFiles = limited.map(file => ({
-        id: crypto.randomUUID(),
-        file,
-        name: file.name,
-        size: file.size,
-        status: 'ready',
-        settings: { ...defaultSettings },
-      }));
-      setFiles(prev => [...prev, ...newFiles]);
-    } else {
-      setUploadLimitExceeded(false);
-      const newFiles = filesToAdd.map(file => ({
-        id: crypto.randomUUID(),
-        file,
-        name: file.name,
-        size: file.size,
-        status: 'ready',
-        settings: { ...defaultSettings },
-      }));
-      setFiles(prev => [...prev, ...newFiles]);
-    }
-
-    setConversionComplete(false);
-  };
-
-  const removeFile = (id) => {
-    setFiles(prev => prev.filter(f => f.id !== id));
-    setUploadLimitExceeded(false);
-  };
-
-  const formatFileSize = useMemo(() => (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }, []);
 
   const fileToEdit = files.find(f => f.id === editingFileId);
-  const totalFilesToConvert = files.length;
-  // BUG FIX: removed unused `convertingFiles` variable that caused a lint warning
+  const totalFiles = files.length;
   const completedOrErrorFiles = files.filter(f => f.status === 'completed' || f.status === 'error').length;
 
   if (authLoading) {
@@ -178,13 +99,12 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
-
       {SettingsComponent && (
         <SettingsComponent
           isOpen={!!editingFileId}
           onClose={() => setEditingFileId(null)}
           file={fileToEdit}
-          onSave={handleSaveSettings}
+          onSave={updateFileSettings}
         />
       )}
 
@@ -197,26 +117,26 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
         <FileUploader
           acceptedFormats={[fromFormat]}
           title="Add More Files"
-          subtitle={`Drop your ${fromFormat.toUpperCase()} files here or click to browse (Max ${MAX_ALLOWED_FILES} files)`}
+          subtitle={`Drop your ${fromFormat.toUpperCase()} files here (Max ${maxAllowedFiles} files)`}
           maxFileSize="100MB"
-          onFilesSelected={handleFilesSelected}
+          onFilesSelected={addFiles}
           className="mb-8"
         />
 
         {uploadLimitExceeded && (
           <p className="text-red-500 dark:text-red-400 text-center mb-4">
-            You can only upload a maximum of {MAX_ALLOWED_FILES} files.
+            You can only upload a maximum of {maxAllowedFiles} files.
           </p>
         )}
 
-        {files.length > 0 && (
+        {hasFiles && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-8">
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Files to Convert ({files.length})</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Files to Convert ({totalFiles})</h3>
 
-              {isConverting && (
+              {isProcessing && (
                 <p className="text-sm text-blue-600 dark:text-blue-400 mb-4">
-                  Processing {completedOrErrorFiles} of {totalFilesToConvert} files...
+                  Processing {completedOrErrorFiles} of {totalFiles} files...
                 </p>
               )}
 
@@ -236,7 +156,7 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
                     <div className="flex items-center space-x-1 shrink-0">
                       {file.status === 'ready' && (
                         <>
-                          <button onClick={() => setEditingFileId(file.id)} className="p-2 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/40" aria-label="Settings">
+                          <button onClick={() => setEditingFileId(file.id)} className="p-2 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/40">
                             <Settings className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                           </button>
                           <button onClick={() => removeFile(file.id)} className="text-red-600 dark:text-red-400 text-sm font-medium px-1 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20">
@@ -245,26 +165,19 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
                         </>
                       )}
                       {file.status === 'converting' && (
-                        <div className="flex items-center space-x-2">
-                          <Loader className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
-                        </div>
+                        <Loader className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
                       )}
                       {file.status === 'completed' && (
                         <div className="flex items-center space-x-2">
                           <a
-                            href={file.downloadUrl?.startsWith('https://') ? file.downloadUrl : '#'}
+                            href={file.downloadUrl}
                             download
-                            aria-label="Download"
-                            className="bg-green-600 hover:bg-green-700 text-white p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-medium flex items-center transition-all"
+                            className="bg-green-600 hover:bg-green-700 text-white p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-medium flex items-center"
                           >
                             <Download className="w-5 h-5" />
                             <span className="hidden sm:inline ml-1">Download</span>
                           </a>
-                          <button
-                            onClick={() => removeFile(file.id)}
-                            aria-label="Clear"
-                            className="bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-medium flex items-center transition-all"
-                          >
+                          <button onClick={() => removeFile(file.id)} className="bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white p-2 sm:px-3 sm:py-2 rounded-lg text-sm font-medium flex items-center">
                             <XCircle className="w-5 h-5" />
                             <span className="hidden sm:inline ml-1">Clear</span>
                           </button>
@@ -276,11 +189,7 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
                             <AlertCircle className="w-5 h-5" />
                             <span>Error</span>
                           </div>
-                          <button
-                            onClick={() => removeFile(file.id)}
-                            aria-label="Clear"
-                            className="bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-1 ml-2"
-                          >
+                          <button onClick={() => removeFile(file.id)} className="bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center ml-2">
                             <XCircle className="w-4 h-4" />
                           </button>
                         </>
@@ -293,27 +202,27 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
           </div>
         )}
 
-        {files.length > 0 && !conversionComplete && (
+        {hasFiles && !processingComplete && (
           <div className="text-center mb-8">
             {isAuthenticated ? (
               <button
                 onClick={startConversion}
-                disabled={isConverting}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-blue-400 disabled:to-indigo-400 text-white px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-200 flex items-center space-x-2 mx-auto shadow-lg hover:shadow-xl transform hover:-translate-y-1 disabled:transform-none"
+                disabled={isProcessing || !canProcess}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-blue-400 disabled:to-indigo-400 text-white px-8 py-4 rounded-xl text-lg font-semibold transition-all flex items-center space-x-2 mx-auto shadow-lg hover:shadow-xl transform hover:-translate-y-1 disabled:transform-none"
               >
-                {isConverting ? (
+                {isProcessing ? (
                   <>
                     <Loader className="w-5 h-5 animate-spin" />
                     <span>Converting</span>
                   </>
                 ) : (
-                  <span>Convert {files.length} File{files.length > 1 ? 's' : ''}</span>
+                  <span>Convert {files.filter(f => f.status === 'ready').length} File{files.length > 1 ? 's' : ''}</span>
                 )}
               </button>
             ) : (
               <button
                 onClick={() => setShowAuthModal(true)}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center justify-center space-x-2 mx-auto"
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-4 rounded-xl text-lg font-semibold transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center justify-center space-x-2 mx-auto"
               >
                 <span>Convert</span>
               </button>
@@ -321,8 +230,7 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
           </div>
         )}
 
-        {/* BUG FIX: show "Convert More" if complete, regardless of error/success mix */}
-        {conversionComplete && (
+        {processingComplete && (
           <div className="text-center mb-8">
             <button
               onClick={handleStartOver}
@@ -337,7 +245,7 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
       {showAuthModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowAuthModal(false)}>
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-8 relative" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700" aria-label="Close">
+            <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700">
               <X className="w-6 h-6" />
             </button>
             <div className="text-center mb-6">
@@ -348,12 +256,13 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
               <p className="text-gray-600 dark:text-gray-400">Your files are ready! Sign in to unlock conversion.</p>
             </div>
             <div className="space-y-3">
-              <Link to="/signup" onClick={() => setShowAuthModal(false)} className="block w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3 rounded-xl font-semibold text-lg transition-all">
+              <Link to="/signup" className="block w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3 rounded-xl font-semibold text-lg transition-all">
                 <div className="flex items-center justify-center space-x-2">
-                  <UserPlus className="w-5 h-5" /><span>Create your Account</span>
+                  <UserPlus className="w-5 h-5" />
+                  <span>Create your Account</span>
                 </div>
               </Link>
-              <Link to="/login" onClick={() => setShowAuthModal(false)} className="block w-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-white py-3 rounded-xl font-medium transition-all">
+              <Link to="/login" className="block w-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-white py-3 rounded-xl font-medium transition-all">
                 <div className="flex items-center justify-center space-x-2">
                   <span>Login</span>
                 </div>

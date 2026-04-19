@@ -1,14 +1,15 @@
-const LoadingComponent = () => {
+const LoadingComponent = ({ text = "Loading" }) => {
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black z-50">
       <style>
         {`
           .loader {
             width: fit-content;
-            font-size: 17px;
+            font-size: 16px;
             font-family: monospace;
-            line-height: 1.4;
+            line-height: 1.5;
             font-weight: bold;
+            color: #ffffff; /* Text color - you can change this */
             background: 
               linear-gradient(#2D6147 0 0) left,
               linear-gradient(#2D6147 0 0) right;
@@ -18,10 +19,7 @@ const LoadingComponent = () => {
             background-origin: border-box;
             position: relative;
             animation: l9-0 2s infinite;
-          }
-          .loader::before {
-            content: "Loading";
-            color: #ffffff; /* Change this to your desired color */
+            white-space: nowrap; /* Keeps long text in one line */
           }
           .loader::after {
             content: "";
@@ -52,7 +50,7 @@ const LoadingComponent = () => {
           }
         `}
       </style>
-      <div className="loader"></div>
+      <div className="loader">{text}</div>
     </div>
   );
 };

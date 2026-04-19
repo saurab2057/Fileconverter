@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, Settings, Shield } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
-import Header from '@/components/layout/Header';
+import Header from '@/components/layout/Header/Header';
 
 import ActivityTab from '@/components/layout/Dashboard/ActivityTab';
 import SettingsTab from '@/components/layout/Dashboard/SettingTab';

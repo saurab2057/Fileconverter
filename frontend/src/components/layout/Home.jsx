@@ -1,3 +1,4 @@
+// src/components/layout/Home.jsx
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Lock, UserPlus, X, ArrowRight } from 'lucide-react';
@@ -7,142 +8,10 @@ import FileUploader from '@/components/common/FileUploader';
 import { AnimatedStats } from '@/components/common/AnimatedStats';
 import { AnimatedTestimonials } from '@/components/common/AnimatedReview';
 
-// Default settings for each converter (needed to pre-load the file on the target page)
-import { defaultMp4toMp3Settings }        from '@/features/conversion/settings/Mp4toMp3Setting';
-import { defaultMovtoMp4Settings }         from '@/features/conversion/settings/MovtoMp4Setting';
-import { defaultVideoToGifSettings }       from '@/features/conversion/settings/VideoToGifSetting';
-import { defaultWebpToPngSettings }        from '@/features/conversion/settings/WebpToPngSetting';
-import { defaultWebpToJpgSettings }        from '@/features/conversion/settings/WebpToJpgSetting';
-import { defaultJfifToPngSettings }        from '@/features/conversion/settings/JfifToPngSetting';
-import { defaultPngtoSvgSettings }         from '@/features/conversion/settings/PngtoSvgSetting';
-import { defaultImageCompressorSettings }  from '@/features/compression/settings/ImageCompressorSetting';
-import { defaultVideoCompressorSettings }  from '@/features/compression/settings/VideoCompressorSetting';
-import { defaultGifCompressorSettings }    from '@/features/compression/settings/GifCompressorSetting';
+// Tool Registry imports
+import { getFormatActions } from '@/lib/toolRegistry';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FORMAT OPTIONS MAP
-// key: file extension
-// options[]: what actions to show in the modal for that file type
-// ─────────────────────────────────────────────────────────────────────────────
-const formatOptions = {
-  // ── Video ──────────────────────────────────────────────────────────────────
-  mp4: {
-    label: 'MP4 Video', color: 'blue',
-    options: [
-      { label: 'Convert to MP3',  icon: '🎵', route: '/convert/mp4/mp3',  settings: defaultMp4toMp3Settings },
-      { label: 'Convert to AAC',  icon: '🎧', route: '/convert/mp4/aac',  settings: defaultMp4toMp3Settings },
-      { label: 'Convert to WebM', icon: '🎬', route: '/convert/mp4/webm', settings: defaultMovtoMp4Settings },
-      { label: 'Convert to GIF',  icon: '🖼️', route: '/convert/mp4/gif',  settings: defaultVideoToGifSettings },
-      { label: 'Compress Video',  icon: '📦', route: '/compress/video',   settings: defaultVideoCompressorSettings },
-    ]
-  },
-  mov: {
-    label: 'MOV Video', color: 'blue',
-    options: [
-      { label: 'Convert to MP4',  icon: '🎬', route: '/convert/mov/mp4',  settings: defaultMovtoMp4Settings },
-      { label: 'Convert to MP3',  icon: '🎵', route: '/convert/mp4/mp3',  settings: defaultMp4toMp3Settings },
-      { label: 'Convert to GIF',  icon: '🖼️', route: '/convert/mov/gif',  settings: defaultVideoToGifSettings },
-      { label: 'Compress Video',  icon: '📦', route: '/compress/video',   settings: defaultVideoCompressorSettings },
-    ]
-  },
-  mkv: {
-    label: 'MKV Video', color: 'blue',
-    options: [
-      { label: 'Convert to MP4',  icon: '🎬', route: '/convert/mkv/mp4',  settings: defaultMovtoMp4Settings },
-      { label: 'Convert to MP3',  icon: '🎵', route: '/convert/mp4/mp3',  settings: defaultMp4toMp3Settings },
-      { label: 'Compress Video',  icon: '📦', route: '/compress/video',   settings: defaultVideoCompressorSettings },
-    ]
-  },
-  avi: {
-    label: 'AVI Video', color: 'blue',
-    options: [
-      { label: 'Convert to MP4',  icon: '🎬', route: '/convert/mkv/mp4',  settings: defaultMovtoMp4Settings },
-      { label: 'Compress Video',  icon: '📦', route: '/compress/video',   settings: defaultVideoCompressorSettings },
-    ]
-  },
-  webm: {
-    label: 'WebM Video', color: 'blue',
-    options: [
-      { label: 'Convert to GIF',  icon: '🖼️', route: '/convert/webm/gif', settings: defaultVideoToGifSettings },
-      { label: 'Convert to MP4',  icon: '🎬', route: '/convert/mkv/mp4',  settings: defaultMovtoMp4Settings },
-      { label: 'Compress Video',  icon: '📦', route: '/compress/video',   settings: defaultVideoCompressorSettings },
-    ]
-  },
-
-  // ── Audio ──────────────────────────────────────────────────────────────────
-  mp3: {
-    label: 'MP3 Audio', color: 'purple',
-    options: [
-      { label: 'Convert to WAV',  icon: '🎵', route: '/convert/mp3/wav',  settings: defaultMp4toMp3Settings },
-      { label: 'Convert to AAC',  icon: '🎧', route: '/convert/mp4/aac',  settings: defaultMp4toMp3Settings },
-      { label: 'Compress MP3',    icon: '📦', route: '/compress/mp3',     settings: defaultVideoCompressorSettings },
-    ]
-  },
-  wav: {
-    label: 'WAV Audio', color: 'purple',
-    options: [
-      { label: 'Convert to MP3',  icon: '🎵', route: '/convert/mp4/mp3',  settings: defaultMp4toMp3Settings },
-      { label: 'Convert to AAC',  icon: '🎧', route: '/convert/mp4/aac',  settings: defaultMp4toMp3Settings },
-      { label: 'Compress WAV',    icon: '📦', route: '/compress/wav',     settings: defaultVideoCompressorSettings },
-    ]
-  },
-
-  // ── Image ──────────────────────────────────────────────────────────────────
-  png: {
-    label: 'PNG Image', color: 'green',
-    options: [
-      { label: 'Convert to SVG',  icon: '✏️', route: '/convert/png/svg',  settings: defaultPngtoSvgSettings },
-      { label: 'Compress PNG',    icon: '📦', route: '/compress/png',     settings: defaultImageCompressorSettings },
-    ]
-  },
-  jpg: {
-    label: 'JPG Image', color: 'green',
-    options: [
-      { label: 'Compress JPEG',   icon: '📦', route: '/compress/jpeg',    settings: defaultImageCompressorSettings },
-    ]
-  },
-  jpeg: {
-    label: 'JPEG Image', color: 'green',
-    options: [
-      { label: 'Compress JPEG',   icon: '📦', route: '/compress/jpeg',    settings: defaultImageCompressorSettings },
-    ]
-  },
-  webp: {
-    label: 'WEBP Image', color: 'green',
-    options: [
-      { label: 'Convert to PNG',  icon: '🖼️', route: '/convert/webp/png', settings: defaultWebpToPngSettings },
-      { label: 'Convert to JPG',  icon: '🖼️', route: '/convert/webp/jpg', settings: defaultWebpToJpgSettings },
-      { label: 'Compress Image',  icon: '📦', route: '/compress/image',   settings: defaultImageCompressorSettings },
-    ]
-  },
-  jfif: {
-    label: 'JFIF Image', color: 'green',
-    options: [
-      { label: 'Convert to PNG',  icon: '🖼️', route: '/convert/jfif/png', settings: defaultJfifToPngSettings },
-      { label: 'Compress Image',  icon: '📦', route: '/compress/image',   settings: defaultImageCompressorSettings },
-    ]
-  },
-
-  // ── GIF ────────────────────────────────────────────────────────────────────
-  gif: {
-    label: 'GIF Image', color: 'orange',
-    options: [
-      { label: 'Convert to MP4',  icon: '🎬', route: '/convert/gif/mp4',  settings: defaultMovtoMp4Settings },
-      { label: 'Compress GIF',    icon: '📦', route: '/compress/gif',     settings: defaultGifCompressorSettings },
-    ]
-  },
-
-  // ── PDF ────────────────────────────────────────────────────────────────────
-  pdf: {
-    label: 'PDF Document', color: 'red',
-    options: [
-      { label: 'Convert to JPG',  icon: '🖼️', route: '/convert/pdf/jpg',  settings: {} },
-      { label: 'Summarize PDF',   icon: '📝', route: '/pdf-to-summary',   settings: {} },
-    ]
-  },
-};
-
-// Color variants per file type category
+// Color variants per category (simplified; in real usage we'd map from registry)
 const colorMap = {
   blue:   { bg: 'bg-blue-50 dark:bg-blue-900/20',    border: 'border-blue-200 dark:border-blue-700',    text: 'text-blue-700 dark:text-blue-300',    badge: 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' },
   purple: { bg: 'bg-purple-50 dark:bg-purple-900/20', border: 'border-purple-200 dark:border-purple-700', text: 'text-purple-700 dark:text-purple-300', badge: 'bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300' },
@@ -150,8 +19,6 @@ const colorMap = {
   orange: { bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-200 dark:border-orange-700', text: 'text-orange-700 dark:text-orange-300', badge: 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300' },
   red:    { bg: 'bg-red-50 dark:bg-red-900/20',       border: 'border-red-200 dark:border-red-700',       text: 'text-red-700 dark:text-red-300',       badge: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' },
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 const HomePage = () => {
   const { isAuthenticated, authLoading } = useAuth();
@@ -179,14 +46,37 @@ const HomePage = () => {
     if (!files || files.length === 0) return;
 
     const ext = files[0].name.split('.').pop().toLowerCase();
-    const config = formatOptions[ext];
+    const actions = getFormatActions(ext);
 
-    if (!config) {
+    if (actions.length === 0) {
       alert(`No tools available for .${ext} files yet. Please pick a converter from the menu above.`);
       return;
     }
 
-    setDetectedFormat({ ext, files, config });
+    // For modal display, we also need a label and color; we'll use the extension's typical category.
+    // For simplicity, we'll set a default color (blue) and label based on extension.
+    const labelMap = {
+      mp4: 'Video', mov: 'Video', mkv: 'Video', avi: 'Video', webm: 'Video',
+      mp3: 'Audio', wav: 'Audio', aac: 'Audio', flac: 'Audio',
+      png: 'Image', jpg: 'Image', jpeg: 'Image', webp: 'Image', jfif: 'Image',
+      gif: 'GIF',
+      pdf: 'Document',
+    };
+    const colorMapByExt = {
+      mp4: 'blue', mov: 'blue', mkv: 'blue', avi: 'blue', webm: 'blue',
+      mp3: 'purple', wav: 'purple', aac: 'purple', flac: 'purple',
+      png: 'green', jpg: 'green', jpeg: 'green', webp: 'green', jfif: 'green',
+      gif: 'orange',
+      pdf: 'red',
+    };
+
+    setDetectedFormat({
+      ext,
+      files,
+      actions,
+      label: labelMap[ext] || 'File',
+      color: colorMapByExt[ext] || 'blue',
+    });
     setShowFormatModal(true);
   };
 
@@ -207,7 +97,7 @@ const HomePage = () => {
 
   const scrollToConverter = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  const colors = detectedFormat ? colorMap[detectedFormat.config.color] : null;
+  const colors = detectedFormat ? colorMap[detectedFormat.color] : null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
@@ -267,7 +157,7 @@ const HomePage = () => {
                 </span>
               </div>
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                What do you want to do with this {detectedFormat.config.label}?
+                What do you want to do with this {detectedFormat.label}?
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 Pick an action and we'll take you straight there with your file already loaded.
@@ -276,7 +166,7 @@ const HomePage = () => {
 
             {/* Options */}
             <div className="space-y-2">
-              {detectedFormat.config.options.map((option) => (
+              {detectedFormat.actions.map((option) => (
                 <button
                   key={option.route + option.label}
                   onClick={() => handleOptionSelect(option)}

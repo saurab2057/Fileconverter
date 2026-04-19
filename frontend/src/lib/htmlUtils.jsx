@@ -4,12 +4,17 @@ export const decodeHTML = (text) => {
   
   // Handle in browser environment
   if (typeof document !== 'undefined') {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(text, 'text/html');
-    return doc.documentElement.textContent || text;
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, 'text/html');
+      return doc.documentElement.textContent || text;
+    } catch (error) {
+      console.warn('DOMParser failed, falling back to regex decoding:', error);
+      // Fall through to regex fallback
+    }
   }
   
-  // Fallback for SSR/Node environments
+  // Fallback for SSR/Node environments or parser failure
   return text
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')

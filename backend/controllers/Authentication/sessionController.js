@@ -24,7 +24,7 @@ export const refreshToken = async (req, res) => {
     try {
         const decoded = jwt.verify(token, refreshTokenSecret);
         const { userId, jti } = decoded;
-
+        //First find the existing session using jti from the refresh token
         const session = await Session.findOne({ user: userId, jti });
 
         if (!session) {
@@ -55,8 +55,10 @@ export const refreshToken = async (req, res) => {
             }
         }
 
-        await Session.deleteOne({ _id: session._id });
+        //extract device id from existing session
+        const deviceId = session.deviceId;
 
+        //generate new jti and refresh token, update session with new jti (same deviceId)
         const newJti = generateJti();
         const newRefreshToken = jwt.sign(
             { userId: user.id, jti: newJti },
@@ -65,13 +67,18 @@ export const refreshToken = async (req, res) => {
         );
 
         const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
-        await Session.create({
-            user: user._id,
-            jti: newJti,
-            ipHash: hashIP(ip),
-            userAgent: req.get('user-agent'),
-            lastActive: Date.now()
-        });
+        const userAgent = req.get('user-agent') || 'unknown';
+        // UPSERT the session (same deviceId)
+        await Session.findOneAndUpdate(
+            { user: user._id, deviceId },
+            {
+                jti: newJti,
+                userAgent,
+                ipHash: hashIP(ip),
+                lastActive: Date.now(),
+            },
+            { upsert: true, setDefaultsOnInsert: true }
+        );
 
         res.cookie('jwt_refresh', newRefreshToken, {
             httpOnly: true,
@@ -186,22 +193,35 @@ export const getActiveSessions = async (req, res) => {
     try {
         const userId = req.user._id;
 
-        const sessions = await Session.find({ user: userId })
-            .select('userAgent ipHash createdAt lastActive jti')
-            .sort({ lastActive: -1 });
+        // Aggregate: one document per deviceId
+        const sessions = await Session.aggregate([
+            { $match: { user: userId } },
+            { $sort: { lastActive: -1 } },
+            {
+                $group: {
+                    _id: '$deviceId',
+                    sessionId: { $first: '$_id' },
+                    jti: { $first: '$jti' },
+                    userAgent: { $first: '$userAgent' },
+                    ipHash: { $first: '$ipHash' },
+                    createdAt: { $first: '$createdAt' },
+                    lastActive: { $first: '$lastActive' },
+                }
+            },
+            { $sort: { lastActive: -1 } }
+        ]);
 
         const currentToken = req.cookies.jwt_refresh;
         let currentJti = null;
         try {
             const dec = jwt.verify(currentToken, refreshTokenSecret);
             currentJti = dec.jti;
-        } catch (e) {
-            // Cookie missing or invalid
-        }
+        } catch (e) {}
 
         return res.json({
             sessions: sessions.map(s => ({
-                id: s._id,
+                id: s.sessionId,
+                deviceId: s._id,
                 device: s.userAgent,
                 ipHash: s.ipHash,
                 createdAt: s.createdAt,
@@ -214,7 +234,6 @@ export const getActiveSessions = async (req, res) => {
         return res.status(500).json({ message: 'Failed to get active sessions.' });
     }
 };
-
 /**
  * 🔒 REVOKE SESSION: Delete specific session by ID
  */

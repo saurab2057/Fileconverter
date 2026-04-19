@@ -1,5 +1,5 @@
 import { Outlet } from 'react-router-dom';
-import Header from '@/components/layout/Header';
+import Header from '@/components/layout/Header/Header';
 import Footer from '@/components/layout/Footer';
 import HelpChatbot from '@/components/layout/chatbot/HelpChatbot';
 import { Navigate } from 'react-router-dom';

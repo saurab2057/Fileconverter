@@ -1,7 +1,12 @@
-import { useState, useEffect } from 'react';
-import { Camera, Save, Loader2, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
+// src/components/layout/Dashboard/SettingTab.jsx
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Camera, Save, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
-import apiClient from '@/lib/api';
+import { profileUpdateSchema, changePasswordSchema } from '@/utils/validationSchemas';
+import { authService } from '@/services/authService';
+import { useToast } from '@/context/ToastContext';
 
 // ── Shared card primitives ────────────────────────────────
 const Card = ({ children }) => (
@@ -36,45 +41,23 @@ const Label = ({ children }) => (
   </label>
 );
 
-const Input = ({ className = '', ...props }) => (
+const Input = ({ className = '', error, ...props }) => (
   <input
-    className={`w-full px-3 py-2 text-[13px] border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg
-      placeholder:text-gray-400 dark:placeholder:text-gray-600
-      focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:ring-offset-0 focus:border-transparent
-      disabled:bg-gray-50 dark:disabled:bg-gray-800disabled:text-blue-400 dark:disabled:text-blue-400 disabled:cursor-not-allowed
-      transition-shadow ${className}`}
+    className={`w-full px-3 py-2 text-[13px] border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed transition-shadow ${
+      error ? 'border-red-400 dark:border-red-600' : 'border-gray-200 dark:border-gray-600'
+    } ${className}`}
     {...props}
   />
 );
-
-// ── Alert banner ──────────────────────────────────────────
-const Alert = ({ type, message, onDismiss }) => {
-  if (!message) return null;
-  const ok = type === 'success';
-  return (
-    <div className={`flex items-start gap-2.5 px-3.5 py-2.5 rounded-lg text-[12px] border
-      ${ok
-        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
-        : 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'
-      }`}
-    >
-      {ok
-        ? <CheckCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-        : <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-      }
-      <span className="flex-1">{message}</span>
-      {onDismiss && (
-        <button onClick={onDismiss} className="opacity-50 hover:opacity-100 font-bold leading-none text-base">×</button>
-      )}
-    </div>
-  );
-};
 
 // ── Client-side image compression ────────────────────────
 const compressImage = (file) =>
   new Promise((resolve) => {
     const MAX_BYTES = 700 * 1024;
-    if (file.size <= MAX_BYTES) { resolve(file); return; }
+    if (file.size <= MAX_BYTES) {
+      resolve(file);
+      return;
+    }
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
@@ -92,25 +75,47 @@ const compressImage = (file) =>
       canvas.getContext('2d').drawImage(img, 0, 0, width, height);
       canvas.toBlob(
         (blob) => resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' })),
-        'image/jpeg', 0.82
+        'image/jpeg',
+        0.82
       );
     };
     img.src = url;
   });
 
-// ── SettingsTab ───────────────────────────────────────────
 const SettingsTab = () => {
   const { user, updateUser, logout } = useAuth();
+  const toast = useToast();
   const isGoogleUser = user?.authProvider !== 'email';
 
-  // ── Profile ──────────────────────────────────────────
-  const [name,          setName]          = useState(user?.name || '');
-  const [picFile,       setPicFile]       = useState(null);
-  const [picPreview,    setPicPreview]    = useState(user?.profilePictureUrl || '');
+  // ── Profile state ──────────────────────────────────────
+  const [picFile, setPicFile] = useState(null);
+  const [picPreview, setPicPreview] = useState(user?.profilePictureUrl || '');
   const [profileSaving, setProfileSaving] = useState(false);
-  const [profileMsg,    setProfileMsg]    = useState({ type: '', text: '' });
 
-  useEffect(() => { setName(user?.name || ''); }, [user?.name]);
+  const {
+    register: registerProfile,
+    handleSubmit: handleProfileSubmit,
+    formState: { errors: profileErrors, isDirty: profileDirty },
+    reset: resetProfile,
+  } = useForm({
+    resolver: zodResolver(profileUpdateSchema),
+    defaultValues: { name: user?.name || '' },
+  });
+
+  // ── Password state ─────────────────────────────────────
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [pwSaving, setPwSaving] = useState(false);
+
+  const {
+    register: registerPassword,
+    handleSubmit: handlePasswordSubmit,
+    formState: { errors: passwordErrors },
+    reset: resetPassword,
+  } = useForm({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: { currentPassword: '', newPassword: '', confirmNewPassword: '' },
+  });
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -120,86 +125,54 @@ const SettingsTab = () => {
     setPicPreview(URL.createObjectURL(compressed));
   };
 
-  const handleProfileSave = async () => {
-    if (!name.trim()) {
-      setProfileMsg({ type: 'error', text: 'Name cannot be empty.' });
-      return;
-    }
+  const onProfileSubmit = async (data) => {
     setProfileSaving(true);
-    setProfileMsg({ type: '', text: '' });
     try {
       let payload;
       if (picFile) {
         payload = new FormData();
-        if (name !== user.name) payload.append('name', name.trim());
+        if (data.name !== user.name) payload.append('name', data.name.trim());
         payload.append('profilePicture', picFile);
       } else {
-        payload = { name: name.trim() };
+        payload = { name: data.name.trim() };
       }
-      const res = await apiClient.put('/api/user/profile', payload);
-      updateUser(res.data.user);
+      const res = await authService.updateProfile(payload);
+      updateUser(res.user);
       setPicFile(null);
-      setProfileMsg({ type: 'success', text: 'Profile updated.' });
+      resetProfile({ name: res.user.name });
+      toast.success('Profile updated.');
     } catch (err) {
-      setProfileMsg({ type: 'error', text: err.response?.data?.message || 'Failed to update profile.' });
+      toast.error(err.response?.data?.message || 'Failed to update profile.');
     } finally {
       setProfileSaving(false);
     }
   };
 
-  const profileChanged = name !== user?.name || !!picFile;
-  const isGoogleUrl = (url) => url?.includes('googleusercontent.com');
-
-  // ── Password ─────────────────────────────────────────
-  const [currentPw,   setCurrentPw]   = useState('');
-  const [newPw,       setNewPw]       = useState('');
-  const [confirmPw,   setConfirmPw]   = useState('');
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew,     setShowNew]     = useState(false);
-  const [pwSaving,    setPwSaving]    = useState(false);
-  const [pwMsg,       setPwMsg]       = useState({ type: '', text: '' });
-
-  const handlePasswordChange = async () => {
-    if (!currentPw || !newPw || !confirmPw) {
-      setPwMsg({ type: 'error', text: 'All fields are required.' });
-      return;
-    }
-    if (newPw.length < 8) {
-      setPwMsg({ type: 'error', text: 'New password must be at least 8 characters.' });
-      return;
-    }
-    if (newPw !== confirmPw) {
-      setPwMsg({ type: 'error', text: 'Passwords do not match.' });
-      return;
-    }
-    if (newPw === currentPw) {
-      setPwMsg({ type: 'error', text: 'New password must differ from current.' });
-      return;
-    }
+  const onPasswordSubmit = async (data) => {
     setPwSaving(true);
-    setPwMsg({ type: '', text: '' });
     try {
-      await apiClient.post('/api/user/change-password', {
-        currentPassword: currentPw,
-        newPassword: newPw,
+      await authService.changePassword({
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
       });
-      setPwMsg({ type: 'success', text: 'Password changed. Signing you out…' });
+      toast.success('Password changed. Signing you out...');
+      resetPassword();
       setTimeout(() => logout(), 1500);
     } catch (err) {
-      setPwMsg({ type: 'error', text: err.response?.data?.message || 'Failed to change password.' });
+      toast.error(err.response?.data?.message || 'Failed to change password.');
     } finally {
       setPwSaving(false);
     }
   };
 
+  const isGoogleUrl = (url) => url?.includes('googleusercontent.com');
+
   return (
     <div className="space-y-4 max-w-2xl">
-
       {/* ── Profile ──────────────────────────────────────── */}
       <Card>
         <CardHeader title="Profile" description="Update your display name and photo" />
 
-        {/* Avatar row — no duplicate, just avatar + name + hint */}
         <div className="flex items-center gap-4 px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <div className="relative flex-shrink-0">
             <img
@@ -236,45 +209,40 @@ const SettingsTab = () => {
           </div>
         </div>
 
-        <CardBody>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label>Full name</Label>
-              <Input
-                type="text"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="Your name"
-              />
+        <form onSubmit={handleProfileSubmit(onProfileSubmit)}>
+          <CardBody>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Full name</Label>
+                <Input
+                  type="text"
+                  placeholder="Your name"
+                  error={profileErrors.name}
+                  {...registerProfile('name')}
+                />
+                {profileErrors.name && (
+                  <p className="text-xs text-red-500 mt-1">{profileErrors.name.message}</p>
+                )}
+              </div>
+              <div>
+                <Label>Email address</Label>
+                <Input type="email" value={user?.email || ''} disabled />
+                <p className="text-[11px] text-gray-400 dark:text-gray-600 mt-1">Cannot be changed</p>
+              </div>
             </div>
-            <div>
-              <Label>Email address</Label>
-              <Input type="email" value={user?.email || ''} disabled />
-              <p className="text-[11px] text-gray-400 dark:text-gray-600 mt-1">Cannot be changed</p>
-            </div>
-          </div>
+          </CardBody>
 
-          {profileMsg.text && (
-            <div className="mt-4">
-              <Alert
-                type={profileMsg.type}
-                message={profileMsg.text}
-                onDismiss={() => setProfileMsg({ type: '', text: '' })}
-              />
-            </div>
-          )}
-        </CardBody>
-
-        <CardFooter>
-          <button
-            onClick={handleProfileSave}
-            disabled={profileSaving || !profileChanged}
-            className="inline-flex items-center gap-2 px-3.5 py-2 text-[12px] font-medium bg-gray-800 dark:bg-white hover:bg-gray-700 dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {profileSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            {profileSaving ? 'Saving…' : 'Save changes'}
-          </button>
-        </CardFooter>
+          <CardFooter>
+            <button
+              type="submit"
+              disabled={profileSaving || (!profileDirty && !picFile)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-[12px] font-medium bg-gray-800 dark:bg-white hover:bg-gray-700 dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {profileSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {profileSaving ? 'Saving…' : 'Save changes'}
+            </button>
+          </CardFooter>
+        </form>
       </Card>
 
       {/* ── Change Password ───────────────────────────────── */}
@@ -295,7 +263,7 @@ const SettingsTab = () => {
             </p>
           </CardBody>
         ) : (
-          <>
+          <form onSubmit={handlePasswordSubmit(onPasswordSubmit)}>
             <CardBody>
               <div className="space-y-4">
                 <div>
@@ -303,10 +271,10 @@ const SettingsTab = () => {
                   <div className="relative">
                     <Input
                       type={showCurrent ? 'text' : 'password'}
-                      value={currentPw}
-                      onChange={e => setCurrentPw(e.target.value)}
                       placeholder="Enter current password"
+                      error={passwordErrors.currentPassword}
                       className="pr-10"
+                      {...registerPassword('currentPassword')}
                     />
                     <button
                       type="button"
@@ -316,6 +284,9 @@ const SettingsTab = () => {
                       {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                  {passwordErrors.currentPassword && (
+                    <p className="text-xs text-red-500 mt-1">{passwordErrors.currentPassword.message}</p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -324,10 +295,10 @@ const SettingsTab = () => {
                     <div className="relative">
                       <Input
                         type={showNew ? 'text' : 'password'}
-                        value={newPw}
-                        onChange={e => setNewPw(e.target.value)}
                         placeholder="Min. 8 characters"
+                        error={passwordErrors.newPassword}
                         className="pr-10"
+                        {...registerPassword('newPassword')}
                       />
                       <button
                         type="button"
@@ -337,42 +308,39 @@ const SettingsTab = () => {
                         {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
+                    {passwordErrors.newPassword && (
+                      <p className="text-xs text-red-500 mt-1">{passwordErrors.newPassword.message}</p>
+                    )}
                   </div>
                   <div>
                     <Label>Confirm new password</Label>
                     <Input
                       type="password"
-                      value={confirmPw}
-                      onChange={e => setConfirmPw(e.target.value)}
                       placeholder="Repeat new password"
+                      error={passwordErrors.confirmNewPassword}
+                      {...registerPassword('confirmNewPassword')}
                     />
+                    {passwordErrors.confirmNewPassword && (
+                      <p className="text-xs text-red-500 mt-1">{passwordErrors.confirmNewPassword.message}</p>
+                    )}
                   </div>
                 </div>
-
-                {pwMsg.text && (
-                  <Alert
-                    type={pwMsg.type}
-                    message={pwMsg.text}
-                    onDismiss={() => setPwMsg({ type: '', text: '' })}
-                  />
-                )}
               </div>
             </CardBody>
 
             <CardFooter>
               <button
-                onClick={handlePasswordChange}
-                disabled={pwSaving || !currentPw || !newPw || !confirmPw}
+                type="submit"
+                disabled={pwSaving}
                 className="inline-flex items-center gap-2 px-3.5 py-2 text-[12px] font-medium bg-gray-800 dark:bg-white hover:bg-gray-700 dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {pwSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 {pwSaving ? 'Updating…' : 'Update password'}
               </button>
             </CardFooter>
-          </>
+          </form>
         )}
       </Card>
-
     </div>
   );
 };

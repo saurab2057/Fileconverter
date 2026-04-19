@@ -1,46 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
-import { Menu } from 'lucide-react';
+// src/features/adminpages/AdminMainLayout.jsx
+import React, { useState } from 'react';
+import { Outlet, useNavigate, NavLink } from 'react-router-dom';
+import { Menu, BarChart3, Activity, Users, Settings, FileText, LogOut } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
-import AdminDashboard from '@/features/adminpages/AdminDashboard';
-import JobMonitor from '@/features/adminpages/JobMonitor';
-import UserManagement from '@/features/adminpages/UserManagement/index';
-import SystemConfig from '@/features/adminpages/SystemConfig';
-import LogsManager from '@/features/adminpages/logs/index'; // 🔒 CRITICAL ADDITION
-import Sidebar from '@/features/adminpages/Sidebar';
+import Sidebar from './Sidebar';
 
 const AdminMainLayout = () => {
-  // Initialize activeTab from localStorage (includes 'audit-logs' support)
-  const [activeTab, setActiveTab] = useState(() => {
-    const savedTab = localStorage.getItem('adminActiveTab');
-    return savedTab || 'dashboard';
-  });
-
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const { user, authLoading, logout } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
 
-  // Save activeTab to localStorage on change
-  useEffect(() => {
-    localStorage.setItem('adminActiveTab', activeTab);
-  }, [activeTab]);
-
   const handleLogout = () => {
-    localStorage.removeItem('adminActiveTab');
     logout();
   };
 
-  // 🔒 RENDER CONTENT BASED ON ACTIVE TAB (ADDED audit-logs CASE)
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard': return <AdminDashboard />;
-      case 'jobs': return <JobMonitor />;
-      case 'users': return <UserManagement />;
-      case 'audit-logs': return <LogsManager />; // 🔒 CRITICAL ADDITION
-      case 'config': return <SystemConfig />;
-      default: return <AdminDashboard />; // Fallback
-    }
-  };
+  const navItems = [
+    { path: '/admin/dashboard', label: 'Dashboard', icon: BarChart3 },
+    { path: '/admin/jobs', label: 'Job Monitor', icon: Activity },
+    { path: '/admin/users', label: 'User Management', icon: Users },
+    { path: '/admin/audit-logs', label: 'Audit Logs', icon: FileText },
+    { path: '/admin/config', label: 'System Config', icon: Settings },
+  ];
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -54,8 +34,7 @@ const AdminMainLayout = () => {
 
       {/* Sidebar (Mobile Only) */}
       <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        navItems={navItems}
         isSidebarOpen={isSidebarOpen}
         setSidebarOpen={setSidebarOpen}
         handleLogout={handleLogout}
@@ -66,8 +45,8 @@ const AdminMainLayout = () => {
         <header className="flex items-center justify-between bg-white p-4 border-b h-16 shadow-sm">
           {/* Left: Hamburger (Mobile) / Logo (Desktop) */}
           <div className="flex items-center">
-            <button 
-              onClick={() => setSidebarOpen(true)} 
+            <button
+              onClick={() => setSidebarOpen(true)}
               className="p-2 md:hidden"
               aria-label="Open sidebar"
             >
@@ -87,27 +66,24 @@ const AdminMainLayout = () => {
           {/* Center: Mobile Title / Desktop Navigation */}
           <div className="flex-1 flex items-center justify-center">
             <h1 className="text-xl font-bold text-gray-900 md:hidden">Admin Panel</h1>
-            
-            {/* 🔒 DESKTOP NAVIGATION (FIXED TYPOS + ADDED AUDIT LOGS) */}
-            <nav className="hidden md:flex space-x-4 text-sm font-medium">
-              {[
-                { id: 'dashboard', label: 'Dashboard' },
-                { id: 'jobs', label: 'Job Monitor' },
-                { id: 'users', label: 'User Management' },
-                { id: 'audit-logs', label: 'Audit Logs' }, // 🔒 CRITICAL ADDITION
-                { id: 'config', label: 'System Config' }
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`px-3 py-2 rounded-lg transition-colors duration-200 ${
-                    activeTab === item.id 
-                      ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-600' 
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`}
+
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex space-x-1">
+              {navItems.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`
+                  }
                 >
+                  <item.icon className="w-4 h-4" />
                   {item.label}
-                </button>
+                </NavLink>
               ))}
             </nav>
           </div>
@@ -125,7 +101,7 @@ const AdminMainLayout = () => {
 
         {/* Main Content */}
         <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-          {renderContent()}
+          <Outlet />
         </main>
       </div>
     </div>

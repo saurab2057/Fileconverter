@@ -59,16 +59,24 @@ export const handleLoginSuccess = async (res, user, req) => {
         // Step 3: Collect request metadata for session tracking
         const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
         const userAgent = req.get('user-agent') || 'unknown';
+        const deviceId = req.body.deviceId;
 
+        if (!deviceId) {
+            return res.status(400).json({ message: 'Device ID is required.' });
+        }
         // Step 4: Persist the session in the database
-        // Each login creates a new Session document linked to this user + JTI
-        await Session.create({
-            user: user._id,
-            jti,
-            ipHash: hashIP(ip),   // Store hashed IP for privacy
-            userAgent,
-            lastActive: Date.now()
-        });
+        // UPSERT session (one per user+device)
+        await Session.findOneAndUpdate(
+            { user: user._id, deviceId },
+            {
+                jti,
+                userAgent,
+                ipHash: hashIP(ip),
+                lastActive: Date.now(),
+                // createdAt is only set on insert
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
 
         // Step 5: Set the refresh token as a secure httpOnly cookie
         // httpOnly = not accessible via JS (XSS protection)
@@ -100,7 +108,7 @@ export const handleLoginSuccess = async (res, user, req) => {
             user._id,
             'USER_LOGIN',
             `User:${user._id}`,
-            { authProvider: user.authProvider },
+            { authProvider: user.authProvider, deviceId },
             ip,
             userAgent
         );
