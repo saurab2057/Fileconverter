@@ -1,9 +1,14 @@
-// @/features/compression/settings/GifCompressorSetting.jsx
+//@/features/compression/settings/GifCompressorSetting.jsx
 import React, { useState, useEffect } from 'react';
 import { Settings, X, RefreshCw } from 'lucide-react';
 
+// Backend reads for GIF compression (gifsicle):
+//   colors → parseInt(fileSettings.colors, 10) || 128
+//
+// gifsicle reduces the color palette to compress the GIF.
+// Valid range is 2–256 (powers of 2 produce best results).
 export const defaultGifCompressorSettings = {
-  colors: 128, // palette size: 2–256. Lower = smaller file, fewer colors
+  colors: 128, // integer — number of colors in the palette (2–256)
 };
 
 const GifCompressorSetting = ({ isOpen, onClose, file, onSave }) => {
@@ -30,25 +35,27 @@ const GifCompressorModal = ({ file, isOpen, onClose, onSave }) => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setSettings({ ...settings, [name]: parseInt(value) });
+    // parseInt — backend does parseInt(fileSettings.colors, 10)
+    setSettings(prev => ({ ...prev, [name]: parseInt(value, 10) }));
   };
 
   const handleReset = () => setSettings(defaultGifCompressorSettings);
   const handleApply = () => { onSave(file.id, settings); onClose(); };
 
-  // Human-readable quality label based on color count
-  const colorLabel = (c) => {
-    if (c >= 200) return 'High Quality';
-    if (c >= 100) return 'Balanced';
-    if (c >= 32)  return 'Small File';
-    return 'Minimal';
+  // Human-readable palette size label
+  const getColorLabel = (val) => {
+    if (val <= 8)   return 'Minimum (smallest file)';
+    if (val <= 32)  return 'Very low';
+    if (val <= 64)  return 'Low';
+    if (val <= 128) return 'Medium (recommended)';
+    if (val <= 192) return 'High';
+    return 'Maximum (best quality)';
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 transition-opacity duration-300">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl">
 
-        {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center space-x-3">
             <Settings className="w-6 h-6 text-gray-900 dark:text-white" />
@@ -70,79 +77,56 @@ const GifCompressorModal = ({ file, isOpen, onClose, onSave }) => {
             <span className="text-sm text-blue-700 dark:text-blue-300">
               Engine: <span className="font-semibold">gifsicle</span>
             </span>
-            <span className="text-xs text-blue-500 dark:text-blue-400">
-              — optimized GIF palette reduction
-            </span>
+            <span className="text-xs text-blue-500 dark:text-blue-400">— palette reduction</span>
           </div>
 
-          {/* Color Palette Slider */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
+          {/* Color count slider */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
               <label htmlFor="colors" className="font-medium text-gray-700 dark:text-gray-300">
-                Color Palette Size
+                Color Palette
               </label>
-              <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-                {settings.colors} colors — {colorLabel(settings.colors)}
-              </span>
+              <div className="text-right">
+                <span className="font-semibold text-gray-900 dark:text-white">{settings.colors} colors</span>
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {getColorLabel(settings.colors)}
+                </span>
+              </div>
             </div>
             <input
               id="colors"
               name="colors"
               type="range"
-              min="8"
+              min="2"
               max="256"
-              step="8"
+              step="2"
               value={settings.colors}
               onChange={handleInputChange}
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600"
             />
-            <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
-              <span>Smallest File (8)</span>
-              <span>Best Quality (256)</span>
+            <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500 mt-1">
+              <span>2 (smallest)</span>
+              <span>256 (best quality)</span>
             </div>
           </div>
 
-          {/* Color preset buttons for quick selection */}
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Quick Presets</p>
-            <div className="grid grid-cols-4 gap-2">
-              {[{ label: 'Minimal', value: 16 }, { label: 'Small', value: 64 }, { label: 'Balanced', value: 128 }, { label: 'Quality', value: 256 }].map(preset => (
-                <button
-                  key={preset.value}
-                  onClick={() => setSettings({ ...settings, colors: preset.value })}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors duration-150
-                    ${settings.colors === preset.value
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'
-                    }`}
-                >
-                  {preset.label}
-                  <span className="block text-xs opacity-70">{preset.value}c</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Info note */}
           <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded-lg px-4 py-3">
-            GIFs are limited to 256 colors by design. Reducing the palette size
-            shrinks the file but may cause color banding in complex images.
+            Fewer colors = smaller file size. GIFs with simple graphics compress well at 64–128 colors.
+            Animations with many gradients may need 192+ colors to look good.
           </p>
-
         </div>
 
-        {/* Footer */}
         <div className="flex justify-between items-center p-5 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={handleReset}
-            className="flex items-center space-x-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 font-medium px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-200"
+            className="flex items-center space-x-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 font-medium px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
           >
             <RefreshCw className="w-4 h-4" />
-            <span>Reset to Defaults</span>
+            <span>Reset</span>
           </button>
           <button
             onClick={handleApply}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-2 rounded-lg font-semibold shadow-md transition-all duration-200 hover:shadow-lg transform hover:-translate-y-0.5"
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-2 rounded-lg font-semibold shadow-md"
           >
             Apply Settings
           </button>

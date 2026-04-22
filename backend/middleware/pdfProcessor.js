@@ -1,38 +1,57 @@
-import { getDocumentProxy, extractText } from 'unpdf';
+// middleware/pdfProcessor.js
+import { getDocumentProxy } from 'unpdf';
 
+const PDF_PROCESS_TIMEOUT_MS = 8000; // 8s hard limit
+
+/**
+ * Extract text from a PDF buffer with a timeout.
+ * @param {Uint8Array|Buffer} pdfBytes - Raw PDF data
+ * @param {number} maxPages - Maximum pages to process
+ * @returns {Promise<{text: string, totalPages: number, pagesProcessed: number}>}
+ */
 export async function extractPdfText(pdfBytes, maxPages = 5) {
-    try {
-        // Load proxy to the underlying PDF.js document
-        const pdf = await getDocumentProxy(new Uint8Array(pdfBytes));
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error('PDF processing timed out (possible malformed structure)'));
+    }, PDF_PROCESS_TIMEOUT_MS);
+  });
 
-        const totalPages = pdf.numPages;
-        const pagesToProcess = Math.min(maxPages, totalPages);
+  try {
+    return await Promise.race([
+      _extractInternal(pdfBytes, maxPages),
+      timeoutPromise
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-        let fullText = '';
+async function _extractInternal(pdfBytes, maxPages) {
+  // Convert Buffer to Uint8Array if needed (unpdf accepts both)
+  const data = pdfBytes instanceof Uint8Array ? pdfBytes : new Uint8Array(pdfBytes);
+  
+  const pdf = await getDocumentProxy(data);
+  const totalPages = pdf.numPages;
+  const pagesToProcess = Math.min(maxPages, totalPages);
+  let fullText = '';
 
-        // You can now use pdf.js-like API
-        for (let i = 1; i <= pagesToProcess; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
+  for (let i = 1; i <= pagesToProcess; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      .map(item => item.str?.trim() || '')
+      .filter(str => str.length > 0)
+      .join(' ');
 
-            const pageText = textContent.items
-                .map(item => item.str?.trim() || '')
-                .filter(str => str.length > 0)
-                .join(' ');
-
-            if (pageText.trim().length > 0) {
-                fullText += `\n\n[Page ${i}]\n${pageText.trim()}`;
-            }
-        }
-
-        return {
-            text: fullText.trim(),
-            totalPages,
-            pagesProcessed: pagesToProcess
-        };
-
-    } catch (error) {
-        console.error('PDF extraction error:', error);
-        throw new Error(`Failed to process PDF: ${error.message || 'Unknown error'}`);
+    if (pageText.trim().length > 0) {
+      fullText += `\n\n[Page ${i}]\n${pageText.trim()}`;
     }
+  }
+
+  return {
+    text: fullText.trim(),
+    totalPages,
+    pagesProcessed: pagesToProcess
+  };
 }

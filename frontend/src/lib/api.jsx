@@ -15,7 +15,7 @@ const apiClient = axios.create({
 });
 
 // ─────────────────────────────────────────────────────────────
-// Request interceptor (add auth token if available)
+// Request interceptor (add auth token + fix FormData Content-Type)
 // ─────────────────────────────────────────────────────────────
 apiClient.interceptors.request.use(
   (config) => {
@@ -23,6 +23,25 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // BUG FIX: When sending FormData (file uploads), the axios instance's
+    // default 'Content-Type: application/json' overrides the browser's
+    // automatic 'multipart/form-data; boundary=...' header.
+    // Multer on the backend cannot parse the request without the boundary,
+    // causing req.files to be empty → 400 "No files were uploaded."
+    //
+    // Fix: delete Content-Type for FormData requests so the browser sets
+    // it automatically with the correct boundary.
+    //
+    // Affected endpoints without this fix:
+    //   POST /api/convert/batch    (batchConvert)
+    //   POST /api/compress/batch   (batchCompress)
+    //   POST /api/ai/summarize-pdf (summarize)
+    //   PUT  /api/user/profile     (updateProfile with avatar upload)
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -79,6 +98,10 @@ apiClient.interceptors.response.use(
       '/api/auth/signup',
       '/api/auth/google',
       '/api/auth/logout',
+      '/api/auth/forgot-password',        // public — no token needed
+      '/api/auth/validate-reset-token',   // public — uses reset_session cookie
+      '/api/auth/reset-password',         // public — uses reset_session cookie
+
     ];
 
     const shouldSkip = skipEndpoints.some(endpoint =>
@@ -97,7 +120,8 @@ apiClient.interceptors.response.use(
           failedQueue.push({ resolve, reject });
         })
           .then(() => {
-            // Retry with the original request
+            // Retry with the original request — the request interceptor
+            // will attach the new token from session.accessToken
             return apiClient(originalRequest);
           })
           .catch(err => Promise.reject(err));
@@ -149,19 +173,17 @@ apiClient.interceptors.response.use(
 
     // Handle 403 Forbidden (e.g., admin access denied)
     if (error.response?.status === 403) {
-      // Optional: redirect to 403 page or show toast
       console.warn('Access forbidden:', error.response.data?.message);
     }
 
-    // Updated interceptor section
     if (error.response?.status === 500 || error.response?.status === 503) {
       const skipRedirect = [
-        '/api/health',          // health checks
-        '/api/chat',            // chatbot messages
-        '/api/convert',         // file conversion
-        '/api/compress',        // file compression
-        '/api/history',         // user history/stats
-        '/api/ai',              // AI summarizer (and any future AI endpoints)
+        '/api/health',
+        '/api/chat',
+        '/api/convert',
+        '/api/compress',
+        '/api/history',
+        '/api/ai',
       ].some(path => originalRequest.url?.includes(path));
 
       if (!skipRedirect) {

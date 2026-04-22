@@ -7,13 +7,13 @@ import { getConversionTool } from '@/lib/toolRegistry';
 
 // Lazy load settings components dynamically
 const settingsComponents = {
-  Mp4toMp3Setting: React.lazy(() => import('@/features/conversion/settings/Mp4toMp3Setting')),
-  MovtoMp4Setting: React.lazy(() => import('@/features/conversion/settings/MovtoMp4Setting')),
+  Mp4toMp3Setting:  React.lazy(() => import('@/features/conversion/settings/Mp4toMp3Setting')),
+  MovtoMp4Setting:  React.lazy(() => import('@/features/conversion/settings/MovtoMp4Setting')),
   VideoToGifSetting: React.lazy(() => import('@/features/conversion/settings/VideoToGifSetting')),
   WebpToPngSetting: React.lazy(() => import('@/features/conversion/settings/WebpToPngSetting')),
   WebpToJpgSetting: React.lazy(() => import('@/features/conversion/settings/WebpToJpgSetting')),
   JfifToPngSetting: React.lazy(() => import('@/features/conversion/settings/JfifToPngSetting')),
-  PngtoSvgSetting: React.lazy(() => import('@/features/conversion/settings/PngtoSvgSetting')),
+  PngtoSvgSetting:  React.lazy(() => import('@/features/conversion/settings/PngtoSvgSetting')),
 };
 
 const DynamicConverterPage = () => {
@@ -22,17 +22,25 @@ const DynamicConverterPage = () => {
 
   if (!tool) return <NotFound />;
 
-  const SettingsComponent = tool.settingsComponent ? settingsComponents[tool.settingsComponent] : null;
+  const SettingsComponent = tool.settingsComponent
+    ? settingsComponents[tool.settingsComponent]
+    : null;
 
+  // BUG FIX: React.lazy requires a <Suspense> boundary somewhere in the tree.
+  // Without it, the app throws "A React component suspended while rendering,
+  // but no fallback UI was specified" the moment any settings modal opens.
+  // Wrapping here guarantees coverage regardless of what ConverterPage does internally.
   return (
-    <ConverterPage
-      fromFormat={tool.fromFormat}
-      toFormat={tool.toFormat}
-      title={tool.title}
-      description={tool.description}
-      settingsComponent={SettingsComponent}
-      defaultSettings={tool.defaultSettings}
-    />
+    <React.Suspense fallback={null}>
+      <ConverterPage
+        fromFormat={tool.fromFormat}
+        toFormat={tool.toFormat}
+        title={tool.title}
+        description={tool.description}
+        settingsComponent={SettingsComponent}
+        defaultSettings={tool.defaultSettings}
+      />
+    </React.Suspense>
   );
 };
 

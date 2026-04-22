@@ -181,14 +181,15 @@ const matchesAny = (str, patterns) => patterns.some(p => p.test(str));
 
 const flattenBody = (body) => {
     if (!body || typeof body !== 'object') return String(body || '');
+    // ✅ AFTER — scans values only
     return Object.entries(body)
         .map(([k, v]) => {
             const val = typeof v === 'object' && v !== null
                 ? JSON.stringify(v)
                 : String(v ?? '');
-            return `${k}=${val}`;
+            return val;  // Only the value, not "key=val"
         })
-        .join('&');
+        .join(' ');
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -237,10 +238,10 @@ const logBlockedRequest = (req, attackType, details) => {
     }
 
     AuditLog.create({
-        userId:    req.user?._id || null,
-        source:    'system',
-        action:    'WAF_BLOCKED',
-        resource:  `${req.method} ${req.originalUrl}`,
+        userId: req.user?._id || null,
+        source: 'system',
+        action: 'WAF_BLOCKED',
+        resource: `${req.method} ${req.originalUrl}`,
         details: {
             attackType,
             details: safeDetails,
@@ -248,7 +249,7 @@ const logBlockedRequest = (req, attackType, details) => {
             userAgent,
         },
         ipAddress: ip,
-        ipHash:    hashIP(ip),
+        ipHash: hashIP(ip),
         userAgent,
     }).catch(err => {
         console.error('🚨 [WAF] AuditLog write failed:', err.message);
@@ -271,8 +272,8 @@ export const waf = (req, res, next) => {
         }
 
         const userAgent = req.get('user-agent') || '';
-        const queryStr  = JSON.stringify(req.query || {});
-        const bodyStr   = flattenBody(req.body);
+        const queryStr = JSON.stringify(req.query || {});
+        const bodyStr = flattenBody(req.body);
 
         // ─────────────────────────────────────────────
         // CHECK 1: Malicious User-Agent

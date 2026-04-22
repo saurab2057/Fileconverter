@@ -16,10 +16,10 @@ const AdminMainLayout = () => {
 
   const navItems = [
     { path: '/admin/dashboard', label: 'Dashboard', icon: BarChart3 },
-    { path: '/admin/jobs', label: 'Job Monitor', icon: Activity },
-    { path: '/admin/users', label: 'User Management', icon: Users },
-    { path: '/admin/audit-logs', label: 'Audit Logs', icon: FileText },
-    { path: '/admin/config', label: 'System Config', icon: Settings },
+    { path: '/admin/jobs',      label: 'Jobs',      icon: Activity },
+    { path: '/admin/users',     label: 'Users',     icon: Users },
+    { path: '/admin/audit-logs',label: 'Audit',     icon: FileText },
+    { path: '/admin/config',    label: 'Settings',  icon: Settings },
   ];
 
   return (
@@ -43,7 +43,7 @@ const AdminMainLayout = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="flex items-center justify-between bg-white p-4 border-b h-16 shadow-sm">
-          {/* Left: Hamburger (Mobile) / Logo (Desktop) */}
+          {/* Left: Hamburger only (no logo) */}
           <div className="flex items-center">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -52,29 +52,19 @@ const AdminMainLayout = () => {
             >
               <Menu size={24} />
             </button>
-            <div className="ml-4 hidden md:flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
-                <Menu className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">FileTools</h1>
-                <p className="text-sm text-gray-500">Admin Panel</p>
-              </div>
-            </div>
           </div>
 
-          {/* Center: Mobile Title / Desktop Navigation */}
+          {/* Center: Desktop Navigation (short labels) */}
           <div className="flex-1 flex items-center justify-center">
-            <h1 className="text-xl font-bold text-gray-900 md:hidden">Admin Panel</h1>
+            <h1 className="text-xl font-bold text-gray-900 md:hidden">Admin</h1>
 
-            {/* Desktop Navigation */}
             <nav className="hidden md:flex space-x-1">
               {navItems.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    `flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       isActive
                         ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -88,7 +78,7 @@ const AdminMainLayout = () => {
             </nav>
           </div>
 
-          {/* Right: Desktop Logout */}
+          {/* Right: Logout */}
           <div className="hidden md:block">
             <button
               onClick={handleLogout}

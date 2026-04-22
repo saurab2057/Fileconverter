@@ -1,83 +1,156 @@
-// 🔒 SECURITY CONSTANTS
+// utils/aiSecurity.js
+
+// ==============================
+// 📏 Input Limits (Security + Performance)
+// ==============================
+
+// Prevent prompt flooding / abuse
 export const MAX_CHAT_CHARS = 500;
+
+// Limit summarization input size
 export const MAX_SUMMARIZE_WORDS = 500;
 export const MAX_SUMMARIZER_PAGES = 2;
-export const MAX_SUMMARIZER_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 
-// 🔒 CHATBOT FORBIDDEN PATTERNS
+// Max upload size (2MB)
+export const MAX_SUMMARIZER_FILE_SIZE = 2 * 1024 * 1024;
+
+
+// ==============================
+// 🚫 Forbidden Patterns (Prompt Injection + Attacks)
+// ==============================
+
+// Strong detection set for chat (strict)
 export const CHAT_FORBIDDEN_PATTERNS = [
   /ignore\s+(previous|system)\s+(instructions|prompt)/i,
+  /ignore\s+all\s+(rules|instructions)/i,
+  /disregard\s+(previous|above)/i,
+
   /system\s*[:=]\s*["']?role/i,
+  /system\s*:\s*["']?/i, // extra coverage
   /<\|system\|>/i,
   /role\s*=\s*["']system["']/i,
-  /execute\s+(command|code)/i,
-  /delete\s+(all|database)/i,
+
   /you\s+are\s+(not|no longer)\s+a/i,
+  /act\s+as\s+(an?|the)/i,
+  /pretend\s+to\s+be/i,
+
+  /execute\s+(command|code)/i,
+  /eval\s*\(/i,
+  /Function\s*\(/i,
+
+  /delete\s+(all|database)/i,
+
   /prompt\s*[:=]\s*["']/i,
-  /base64_decode/i,
+
+  /bypass\s+(security|filters)/i,
+  /jailbreak/i,
+  /do\s+anything\s+now/i, // DAN-style
+
+  /base64_decode|atob|btoa/i,
   /union\s+select/i,
+
   /<script/i,
   /javascript:/i
 ];
 
-// 🔒 SUMMARIZER FORBIDDEN PATTERNS (Subset)
+// Reduced set for summarizer (less strict, avoids false positives in documents)
 export const SUMMARIZER_FORBIDDEN_PATTERNS = [
   /ignore\s+(previous|system)\s+(instructions|prompt)/i,
+  /ignore\s+all\s+(rules|instructions)/i,
+  /disregard\s+(previous|above)/i,
+
   /system\s*[:=]\s*["']?role/i,
+  /system\s*:\s*["']?/i,
+
   /execute\s+(command|code)/i,
   /delete\s+(all|database)/i,
-  /you\s+are\s+(not|no longer)\s+a/i
+
+  /you\s+are\s+(not|no longer)\s+a/i,
+  /act\s+as\s+(an?|the)/i,
+  /pretend\s+to\s+be/i
 ];
 
-// 🔒 SHARED SANITIZATION LOGIC
+
+// ==============================
+// 🔒 Dangerous Unicode Characters
+// ==============================
+
+// Control chars + bidi override (used in hidden injection attacks)
+const CONTROL_CHARS_REGEX =
+  /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E]/g;
+
+
+// ==============================
+// 🧹 Input Sanitization
+// ==============================
+
 export const sanitizeInput = (text = '') => {
-  // 1. Remove zero-width injection vectors
-  let clean = text.replace(/[\u200B-\u200D\uFEFF\u2060]/g, '');
-  
-  // 2. Normalize Unicode (collapse emoji sequences)
-  clean = clean.normalize('NFKC');
-  
-  // 3. Remove ALL emojis (ZWJ sequences bypass simple filters)
-  const emojiRegex = /[\p{Emoji}\u{1F000}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
-  clean = clean.replace(emojiRegex, '');
-  
-  // 4. Collapse excessive whitespace
-  clean = clean.replace(/\s+/g, ' ').trim();
-  
-  return clean;
+  return text
+    // Remove zero-width/invisible characters
+    .replace(/[\u200B-\u200D\uFEFF\u2060]/g, '')
+
+    // Normalize Unicode (prevents homoglyph tricks)
+    .normalize('NFKC')
+
+    // Remove control + bidi override chars
+    .replace(CONTROL_CHARS_REGEX, '')
+
+    // Remove emojis (optional but reduces noise)
+    .replace(/[\p{Emoji}\u{1F000}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+
+    // Normalize whitespace
+    .replace(/\s+/g, ' ')
+    .trim();
 };
 
-// 🔒 PATTERN CHECKER
+
+// ==============================
+// 🔍 Pattern Detection
+// ==============================
+
 export const containsForbiddenPatterns = (text, patterns) => {
   const normalized = text.toLowerCase();
   return patterns.some(pattern => pattern.test(normalized));
 };
 
-// 🔒 HELPER: TRUNCATE WORDS
+
+// ==============================
+// ✂️ Word Limiting Utility
+// ==============================
+
 export const truncateToWords = (text, maxWords) => {
   if (!text) return '';
+
   const words = text.trim().split(/\s+/);
-  return words.length <= maxWords ? text : words.slice(0, maxWords).join(' ');
+
+  return words.length <= maxWords
+    ? text
+    : words.slice(0, maxWords).join(' ');
 };
+
+
+// ==============================
+// 🛡️ AI Response Sanitization
+// ==============================
 
 export const sanitizeAiResponse = (text) => {
   if (!text) return 'No response generated';
 
   return text
-    // 1. Remove control / junk characters (optional cleanup)
-    .replace(/[^\x20-\x7E\n]/g, '') // removes weird unicode/control chars
+    // Remove control characters only (keep international text intact)
+    .replace(CONTROL_CHARS_REGEX, '')
 
-    // 2. Remove excessive symbol noise (optional)
-    .replace(/[$%#^*&]{3,}/g, '') // removes spammy symbol clusters
+    // Remove spammy symbol clusters
+    .replace(/[$%#^*&]{3,}/g, '')
 
-    // 3. Encode HTML entities (CRITICAL for XSS)
+    // Escape HTML (prevents XSS)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
 
-    // 4. Normalize whitespace
+    // Normalize whitespace
     .replace(/\s+/g, ' ')
     .trim();
 };

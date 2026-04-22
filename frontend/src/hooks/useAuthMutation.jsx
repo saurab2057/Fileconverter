@@ -26,10 +26,8 @@ export const useAuthMutation = (endpoint, options = {}) => {
         login(data.accessToken, data.user);
         const redirectTo = data.user.role === 'admin' ? '/admin' : '/';
         navigate(redirectTo, { replace: true });
-      }
-
-      // Handle signup success (no auto-login)
-      if (endpoint === '/api/auth/signup') {
+      } else if (endpoint === '/api/auth/signup') {
+        // Signup does not auto-login — navigate to login page
         navigate('/login', { replace: true });
       }
 

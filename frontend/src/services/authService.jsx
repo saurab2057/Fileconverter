@@ -43,6 +43,20 @@ export const authService = {
   },
 
   /**
+   * Send forgot password email.
+   * @param {string} email - User's registered email
+   * @param {string} recaptchaToken - reCAPTCHA token
+   * @returns {Promise} - { message }
+   */
+  forgotPassword: async (email, recaptchaToken) => {
+    const { data } = await apiClient.post('/api/auth/forgot-password', {
+      email,
+      'recaptcha-token': recaptchaToken,
+    });
+    return data;
+  },
+
+  /**
    * Validate password reset token.
    * @param {string} token - Reset token from email link
    * @returns {Promise} - { valid, redirectUrl }

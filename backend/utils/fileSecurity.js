@@ -1,4 +1,5 @@
 import { fileTypeFromBuffer } from 'file-type';
+import { runStegChecks } from './stegSecurity.js';
 
 // 🔒 CONVERSION SECURITY CONSTANTS
 export const ALLOWED_MIME_TYPES = new Set([
@@ -9,7 +10,7 @@ export const ALLOWED_MIME_TYPES = new Set([
     'audio/mpeg', 'audio/mp4', 'audio/x-wav', 'audio/wav',
     'audio/flac', 'audio/aac', 'audio/ogg', 'audio/webm', 'audio/3gpp',
     // Image
-    // Image (SVG blocked as input — can contain embedded JS. SVG is allowed as output only.)
+    // (SVG blocked as input — can contain embedded JS. SVG is allowed as output only.)
     'image/png', 'image/jpeg', 'image/gif',
     'image/webp', 'image/bmp', 'image/tiff', 'image/x-icon',
     // Document
@@ -50,10 +51,27 @@ export const sanitizeFilename = (filename) => {
 };
 
 // 🔒 HELPER: VALIDATE FILE SECURITY (ASYNC)
-// Returns null if valid, or an error object if invalid
+//
+// Validation pipeline (runs in order):
+//   1. Detect true MIME type from buffer magic bytes
+//   2. Block if MIME not in whitelist
+//   3. Block if file extension does not match detected MIME
+//   4. Run steganography / hidden payload checks:
+//        a. PDF embedded JS / dangerous action scan
+//        b. Data-after-EOF detection (payload appended after end marker)
+//        c. Polyglot file detection (dual-format file signatures)
+//        d. JPEG/PNG metadata stripping (mutates file.buffer with clean version)
+//        e. Shannon entropy analysis
+//
+// Returns null if the file is safe.
+// Returns { message: string } if the file should be blocked.
+//
+// IMPORTANT: On success, file.buffer is replaced with the metadata-stripped
+// version for JPEG and PNG files. Controllers require no changes —
+// they always read file.buffer which will already be the clean version.
 export const validateFileSecurity = async (file, userId) => {
     try {
-        // 1. DETECT ACTUAL MIME TYPE FROM CONTENT
+        // ── STEP 1: Detect actual MIME type from file content ──
         const type = await fileTypeFromBuffer(file.buffer);
 
         if (!type) {
@@ -61,13 +79,13 @@ export const validateFileSecurity = async (file, userId) => {
             return { message: `Could not verify file type for "${file.originalname}". Upload blocked for security.` };
         }
 
-        // 2. BLOCK IF MIME TYPE NOT IN WHITELIST
+        // ── STEP 2: Block if MIME is not in the whitelist ─────
         if (!ALLOWED_MIME_TYPES.has(type.mime)) {
             console.warn(`[SECURITY BLOCK] Invalid MIME ${type.mime} for ${file.originalname} from user ${userId}`);
             return { message: `File "${file.originalname}" contains invalid content. Only media/PDF files allowed.` };
         }
 
-        // 3. BLOCK IF EXTENSION ≠ MIME TYPE
+        // ── STEP 3: Block if extension does not match MIME ────
         const ext = file.originalname.split('.').pop()?.toLowerCase();
         if (!ext) {
             console.warn(`[SECURITY BLOCK] No extension: ${file.originalname} from user ${userId}`);
@@ -80,7 +98,28 @@ export const validateFileSecurity = async (file, userId) => {
             return { message: `File extension does not match content type for "${file.originalname}".` };
         }
 
-        return null; // Valid
+        // ── STEP 4: Steganography & hidden payload checks ─────
+        //
+        // runStegChecks returns:
+        //   { clean: true,  strippedBuffer } — safe
+        //   { clean: false, reason }         — block the file
+        //
+        // For JPEG and PNG, strippedBuffer is the EXIF/metadata-free
+        // version. Replacing file.buffer here means CloudConvert always
+        // receives clean data — no controller changes required.
+        const stegResult = runStegChecks(file, type.mime);
+
+        if (!stegResult.clean) {
+            console.warn(`[SECURITY BLOCK] Steg check failed: ${file.originalname} (user ${userId}): ${stegResult.reason}`);
+            return { message: `File "${file.originalname}" was blocked: ${stegResult.reason}` };
+        }
+
+        // Replace buffer with cleaned version (EXIF stripped for images).
+        // For non-image types strippedBuffer === original buffer — no cost.
+        file.buffer = stegResult.strippedBuffer;
+
+        return null; // ✅ File is valid and clean
+
     } catch (err) {
         console.error(`[VALIDATION ERROR] ${file.originalname}:`, err);
         return { message: `Security validation failed for "${file.originalname}"` };
