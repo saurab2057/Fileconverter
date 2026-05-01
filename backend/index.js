@@ -4,12 +4,15 @@ import mongoose from 'mongoose';
 import cluster from 'cluster';
 import os from 'os';
 
-// 🔒 STEP 1: LOAD ENV IMMEDIATELY
+// ─────────────────────────────────────────────────────────────
+// 🔒 STEP 1: LOAD ENV
+// ─────────────────────────────────────────────────────────────
 dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || '.env' });
 
-// 🔒 STEP 2: CRITICAL ENV VALIDATION (HALTS STARTUP ON MISSING SECRETS)
+// ─────────────────────────────────────────────────────────────
+// 🔒 STEP 2: ENV VALIDATION
+// ─────────────────────────────────────────────────────────────
 function validateEnvironmentVariables() {
-    // CRITICAL SECRETS (MUST EXIST IN ALL ENVIRONMENTS)
     const criticalSecrets = [
         "ACCESS_SECRET_KEY",
         "REFRESH_SECRET_KEY",
@@ -18,7 +21,6 @@ function validateEnvironmentVariables() {
         "MONGO_URI",
     ];
 
-    // PRODUCTION-ONLY SECRETS (REQUIRED ONLY IN PRODUCTION)
     const productionSecrets = [
         'CLOUDINARY_CLOUD_NAME',
         'CLOUDINARY_API_KEY',
@@ -32,144 +34,175 @@ function validateEnvironmentVariables() {
     const missing = [];
     const warnings = [];
 
-    // Validate critical secrets (all environments)
     criticalSecrets.forEach(varName => {
-        if (!process.env[varName] || process.env[varName].trim() === '') {
-            missing.push(`❌ ${varName} (CRITICAL - required in all environments)`);
+        if (!process.env[varName]?.trim()) {
+            missing.push(`❌ ${varName} (CRITICAL)`);
         } else if (process.env[varName].length < 32) {
-            warnings.push(`⚠️ ${varName} is too short (${process.env[varName].length} chars). Minimum 32 recommended.`);
+            warnings.push(`⚠️ ${varName} too short (${process.env[varName].length})`);
         }
     });
 
-    // Validate production secrets (only in production)
     if (process.env.NODE_ENV === 'production') {
         productionSecrets.forEach(varName => {
-            if (!process.env[varName] || process.env[varName].trim() === '') {
-                missing.push(`❌ ${varName} (REQUIRED IN PRODUCTION)`);
+            if (!process.env[varName]?.trim()) {
+                missing.push(`❌ ${varName} (PRODUCTION REQUIRED)`);
             }
         });
 
-        // Production-specific validations
-        if (process.env.FRONTEND_URL?.startsWith('http://localhost')) {
-            warnings.push('⚠️ FRONTEND_URL uses localhost in production. Must be HTTPS domain.');
+        if (process.env.FRONTEND_URL?.includes('localhost')) {
+            warnings.push('⚠️ FRONTEND_URL uses localhost in production');
         }
+
         if (!process.env.PORT || isNaN(Number(process.env.PORT))) {
-            missing.push('❌ PORT must be a valid number in production');
+            missing.push('❌ PORT must be valid in production');
         }
     }
 
-    // EXIT ON CRITICAL ERRORS
-    if (missing.length > 0) {
-        console.error('\n' + '='.repeat(70));
-        console.error('❌ FATAL: MISSING ENVIRONMENT VARIABLES');
-        console.error('='.repeat(70));
-        missing.forEach(msg => console.error(msg));
-        console.error('\n💡 FIX: Create .env file with all required variables');
-        console.error('   Example: cp .env.example .env && nano .env');
-        console.error('='.repeat(70) + '\n');
+    if (missing.length) {
+        console.error('\n❌ FATAL ENV ERROR\n');
+        missing.forEach(m => console.error(m));
         process.exit(1);
     }
 
-    // LOG WARNINGS (don't exit, just inform)
-    if (warnings.length > 0) {
-        console.warn('\n' + '='.repeat(70));
-        console.warn('⚠️ SECURITY WARNINGS');
-        console.warn('='.repeat(70));
-        warnings.forEach(msg => console.warn(msg));
-        console.warn('='.repeat(70) + '\n');
+    if (warnings.length) {
+        console.warn('\n⚠️ WARNINGS\n');
+        warnings.forEach(w => console.warn(w));
     }
 }
 
-// 🔒 STEP 3: RUN VALIDATION BEFORE ANYTHING ELSE
 validateEnvironmentVariables();
 
-// --- REST OF STARTUP LOGIC ---
-async function startServer() {
-    const { default: app } = await import('./app.js');
+// ─────────────────────────────────────────────────────────────
+// 🔧 COMMON BOOTSTRAP
+// ─────────────────────────────────────────────────────────────
+async function bootstrap() {
     const connectDB = await import('./config/db.js');
     const { default: Config } = await import('./models/Config.js');
-    const { registerCronJobs } = await import('./cronJobs.js');
+
+    await connectDB.default();
+
+    try {
+        await Config.initialize();
+        console.log('✅ Config initialized');
+    } catch (err) {
+        console.warn('⚠️ Config init failed:', err.message);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 🚀 WORKER (HTTP SERVER)
+// ─────────────────────────────────────────────────────────────
+async function startWorker() {
+    const { default: app } = await import('./app.js');
 
     const PORT = process.env.PORT || 5000;
 
-    // Connect to database
-    await connectDB.default();
+    await bootstrap();
 
-    // Initialize default config
-    try {
-        await Config.initialize();
-        console.log('✅ Default config initialized');
-    } catch (err) {
-        console.error('⚠️ Failed to initialize default config:', err.message);
-    }
+    const server = app.listen(PORT, () => {
+        console.log(`🚀 Worker ${process.pid} running on port ${PORT}`);
+    });
 
-    // ✅ Register cron jobs AFTER DB is connected and config is ready
-    // ⚠️ Cluster guard inside registerCronJobs ensures only master process runs them
-    registerCronJobs();
+    // Graceful shutdown
+    const shutdown = async (signal) => {
+        console.log(`\n🚨 Worker ${process.pid} shutting down (${signal})`);
 
-    // Clustering for scalability (production only)
-    if (process.env.NODE_ENV === 'production' && cluster.isMaster) {
-        const numCPUs = os.cpus().length;
-        console.log(`🔧 Master process ${process.pid} started. Forking ${numCPUs} workers...`);
-        
-        for (let i = 0; i < numCPUs; i++) {
-            cluster.fork();
-        }
-
-        cluster.on('exit', (worker, code, signal) => {
-            console.log(`⚠️ Worker ${worker.process.pid} died (code: ${code}, signal: ${signal}). Forking new one...`);
-            cluster.fork();
-        });
-    } else {
-        // Development mode (single process)
-        if (process.env.NODE_ENV !== 'test') {
-            const server = app.listen(PORT, () => {
-                console.log(`\n🚀 Backend server running in ${process.env.NODE_ENV} mode`);
-                console.log(`📍 URL: http://localhost:${PORT}`);
-                console.log(`🔖 PID: ${process.pid}`);
-                console.log(`📅 Time: ${new Date().toISOString()}\n`);
+        try {
+            await new Promise((resolve, reject) => {
+                server.close(err => err ? reject(err) : resolve());
             });
 
-            // Graceful shutdown handler
-            const gracefulShutdown = async (signal) => {
-                console.log(`\n🚨 Received ${signal}. Starting graceful shutdown...`);
-                try {
-                    await new Promise((resolve, reject) => {
-                        server.close((err) => {
-                            if (err) return reject(err);
-                            console.log('✅ HTTP server closed.');
-                            resolve();
-                        });
-                    });
-                    await mongoose.connection.close();
-                    console.log('✅ MongoDB connection closed.');
-                    console.log('✅ Graceful shutdown completed.');
-                    process.exit(0);
-                } catch (err) {
-                    console.error('💥 Error during graceful shutdown:', err);
-                    process.exit(1);
-                }
-            };
+            await mongoose.connection.close();
 
-            process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-            process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+            console.log('✅ Worker shutdown complete');
+            process.exit(0);
+
+        } catch (err) {
+            console.error('💥 Shutdown error:', err);
+            process.exit(1);
         }
+    };
+
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 🧠 MASTER (CLUSTER ORCHESTRATOR)
+// ─────────────────────────────────────────────────────────────
+async function startMaster() {
+    const { registerCronJobs } = await import('./cronJobs.js');
+
+    await bootstrap();
+
+    // ✅ ONLY MASTER runs cron
+    registerCronJobs();
+
+    const numCPUs = os.cpus().length;
+
+    console.log(`🔧 Master ${process.pid} starting ${numCPUs} workers`);
+
+    for (let i = 0; i < numCPUs; i++) {
+        cluster.fork();
+    }
+
+    cluster.on('exit', (worker, code, signal) => {
+        console.warn(`⚠️ Worker ${worker.process.pid} died. Restarting...`);
+        cluster.fork();
+    });
+}
+
+// ─────────────────────────────────────────────────────────────
+// 🧭 ENTRYPOINT CONTROL
+// ─────────────────────────────────────────────────────────────
+async function start() {
+    const isProd = process.env.NODE_ENV === 'production';
+
+    if (isProd) {
+        if (cluster.isPrimary) {
+            await startMaster();
+        } else {
+            await startWorker();
+        }
+    } else {
+        // Dev: single process = worker + cron
+        const { registerCronJobs } = await import('./cronJobs.js');
+
+        await bootstrap();
+        registerCronJobs();
+        await startWorker();
     }
 }
 
-// --- GLOBAL ERROR HANDLERS ---
+// ─────────────────────────────────────────────────────────────
+// ❌ GLOBAL ERROR HANDLERS
+// ─────────────────────────────────────────────────────────────
 process.on('unhandledRejection', (err) => {
-    console.error('💥 UNHANDLED REJECTION! Shutting down...', err);
+    console.error('💥 UNHANDLED REJECTION', err);
     process.exit(1);
 });
 
 process.on('uncaughtException', (err) => {
-    console.error('💥 UNCAUGHT EXCEPTION! Shutting down...', err);
+    console.error('💥 UNCAUGHT EXCEPTION', err);
     process.exit(1);
 });
 
-// --- START APPLICATION ---
-startServer().catch(err => {
-    console.error("❌ Failed to start server:", err);
+// ─────────────────────────────────────────────────────────────
+// ▶️ START APP
+// ─────────────────────────────────────────────────────────────
+start().catch(err => {
+    console.error('❌ Startup failed:', err);
     process.exit(1);
 });
+
+
+/*
+You are still:
+Connecting MongoDB in every worker
+That’s correct for Node cluster, but:
+👉 In very high-scale systems:
+You’d introduce connection pooling strategies or move beyond cluster
+For your level and CV:
+✔️ This is exactly right
+✔️ Don’t overcomplicate it further
+*/

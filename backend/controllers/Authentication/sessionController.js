@@ -97,7 +97,7 @@ export const refreshToken = async (req, res) => {
                     role: user.role,
                     status: user.status,
                     profilePictureUrl: user.profilePictureUrl || null,
-                    authProvider: user.authProvider || 'local'
+                    authProvider: user.authProvider || 'email'
                 }
             },
             accessTokenSecret,
@@ -112,7 +112,7 @@ export const refreshToken = async (req, res) => {
             status: user.status,
             profilePictureUrl: user.profilePictureUrl || null,
             createdAt: user.createdAt,
-            authProvider: user.authProvider || 'local',
+            authProvider: user.authProvider || 'email',
         };
 
         console.log('✅ Refresh successful - Token rotated, new session created');
