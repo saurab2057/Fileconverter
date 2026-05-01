@@ -28,7 +28,8 @@ const SessionSchema = new mongoose.Schema({
 SessionSchema.index({ user: 1, deviceId: 1 }, { unique: true });
 
 // TTL index — auto-delete sessions after 7 days
-SessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 604800 });
+// AFTER — expires 7 days from LAST ACTIVITY
+SessionSchema.index({ lastActive: 1 }, { expireAfterSeconds: 604800 });
 
 // Compound index for revocation queries
 SessionSchema.index({ user: 1, createdAt: -1 });

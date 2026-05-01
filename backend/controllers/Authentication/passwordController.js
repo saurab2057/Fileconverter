@@ -25,7 +25,7 @@ export const forgotPassword = async (req, res) => {
             const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
             await resend.emails.send({
-                from: 'onboarding@resend.dev',
+                from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
                 to: user.email,
                 subject: 'Your Password Reset Link',
                 html: `<p>Hello ${user.name || 'User'},</p>

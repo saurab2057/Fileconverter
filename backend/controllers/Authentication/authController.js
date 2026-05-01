@@ -15,8 +15,9 @@ import { logUserActivity } from '../../middleware/auditLogger.js';
 //   2. Generate a long-lived refresh token with a unique JTI
 //   3. Save the session to the Session collection (for tracking)
 //   4. Set the refresh token as an httpOnly cookie
-//   5. Return the access token + user info to the client
-//   6. Log the login event to the activity log
+//   5. Build the user info object to return to the client
+//   6. Return the access token + user info to the client
+//   7. Log the login event to the activity log
 // ─────────────────────────────────────────────────────────────
 export const handleLoginSuccess = async (res, user, req) => {
 
@@ -93,7 +94,7 @@ export const handleLoginSuccess = async (res, user, req) => {
         // Step 6: Build the user info object to send back to the client
         // Note: sensitive fields like password are intentionally excluded
         const userInfo = {
-            id: user._id,
+            id: user.id,                  // ✅ string, consistent with JWT payload above it
             name: user.name,
             email: user.email,
             role: user.role,
@@ -185,7 +186,7 @@ export const googleAuth = async (req, res) => {
 
         // Step 3: Block suspended users from logging in
         if (user.status !== 'active') {
-            return res.status(403).json({ message: 'Your account has been suspended. Please contact support.' });
+            return res.status(403).json({ message: 'Your account has been banned. Please contact support.' });
         }
 
         // Step 4: Save request metadata (IP, device, etc.) then complete login
@@ -286,7 +287,14 @@ export const login = async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials.' });
         }
 
-        // Step 4: Save request metadata then complete login
+        // Step 4: ✅ Added — consistent with googleAuth, startAuthentication, verifyAuthentication
+        if (user.status !== 'active') {
+            return res.status(403).json({
+                message: 'Your account has been banned. Please contact support.'
+            });
+        }
+
+        // Step 5: Save request metadata then complete login
         await saveUserMetadata(req, user._id);
         return handleLoginSuccess(res, user, req);
 

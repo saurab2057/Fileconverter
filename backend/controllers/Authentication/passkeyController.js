@@ -202,7 +202,7 @@ export const verifyRegistration = async (req, res) => {
     const deviceType = detectDeviceType(userAgent);
     const deviceName = getDeviceName(userAgent);
 
-        // Duplicate device check — warn if this user already has a passkey
+    // Duplicate device check — warn if this user already has a passkey
     // from the same browser + OS combination (e.g. "Chrome on Windows").
     // Each browser on a device shares the same credential store, so two
     // passkeys from "Chrome on Windows" would be redundant.
@@ -434,6 +434,9 @@ export const verifyAuthentication = async (req, res) => {
     passkey.lastUsed = new Date();
     await passkey.save();
 
+    // consistent with authController.js login() and googleAuth()
+    await saveUserMetadata(req, userId);  // metadata first
+
     await logUserActivity(
       userId,
       'PASSKEY_LOGIN',
@@ -442,8 +445,6 @@ export const verifyAuthentication = async (req, res) => {
       getClientIP(req),
       req.get('user-agent') || ''
     );
-
-    await saveUserMetadata(req, userId);
 
     // Issue JWT + refresh cookie — identical to normal password login
     return handleLoginSuccess(res, user, req);
