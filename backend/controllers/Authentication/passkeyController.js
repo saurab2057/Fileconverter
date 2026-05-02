@@ -7,6 +7,7 @@ import {
 } from '@simplewebauthn/server';
 import Passkey from '../../models/Passkey.js';
 import User from '../../models/User.js';
+import mongoose from 'mongoose';
 import { handleLoginSuccess } from './authController.js';
 import { logUserActivity } from '../../middleware/auditLogger.js';
 import { saveUserMetadata } from '../../middleware/collectUserMetadata.js';
@@ -74,8 +75,11 @@ const getDeviceName = (userAgent) => {
   return `${b} on ${o}`;
 };
 
-const getClientIP = (req) =>
-  req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+const getClientIP = (req) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+};
 
 
 // ─────────────────────────────────────────────────────────────
@@ -498,6 +502,10 @@ export const deletePasskey = async (req, res) => {
     const userId = req.user._id;
     const { passkeyId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(passkeyId)) {
+      return res.status(400).json({ message: 'Invalid passkey ID format.' });
+    }
+
     const passkey = await Passkey.findOneAndDelete({
       _id: passkeyId,
       user: userId,   // ownership check
@@ -544,6 +552,10 @@ export const updatePasskeyLabel = async (req, res) => {
     const userId = req.user._id;
     const { passkeyId } = req.params;
     const { label } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(passkeyId)) {
+      return res.status(400).json({ message: 'Invalid passkey ID format.' });
+    }
 
     if (!label || typeof label !== 'string' || label.trim().length === 0) {
       return res.status(400).json({ message: 'Label cannot be empty.' });

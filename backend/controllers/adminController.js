@@ -319,7 +319,10 @@ export const getAuditLogs = async (req, res) => {
         if (userIdFilter && mongoose.Types.ObjectId.isValid(userIdFilter)) {
             query.userId = userIdFilter;
         }
-        if (ipFilter) query.ipAddress = { $regex: ipFilter, $options: 'i' };
+        if (ipFilter) {
+            const escapedIp = ipFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            query.ipAddress = { $regex: escapedIp, $options: 'i' };
+        }
 
         const total = await AuditLog.countDocuments(query);
         const logs = await AuditLog.find(query)

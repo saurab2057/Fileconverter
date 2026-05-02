@@ -100,9 +100,8 @@ export const changePassword = async (req, res) => {
             return res.status(401).json({ message: 'Current password is incorrect.' });
         }
 
-        // Update password — the User model's pre-save hook hashes it
+        // Update password — the User model's pre-save hook hashes it and stamps passwordChangedAt
         user.password = newPassword;
-        user.passwordChangedAt = new Date();
         await user.save();
 
         // Revoke ALL sessions — user must log in again on all devices

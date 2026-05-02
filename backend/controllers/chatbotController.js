@@ -53,7 +53,6 @@ export const handleChat = async (req, res) => {
     res.json({ reply: cleanReply });
 
   } catch (err) {
-    console.error('AI Chat Service Error:', err.message);
     console.error("AI Chat Service Error:");
     console.error("Message:", err.message);
     console.error("Code:", err.code);

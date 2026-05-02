@@ -13,7 +13,6 @@ export const refreshToken = async (req, res) => {
     const accessTokenExpiry = process.env.ACCESS_TOKEN_EXPIRY || '15m';
     const refreshTokenExpiry = process.env.REFRESH_TOKEN_EXPIRY || '7d';
 
-    console.log('Cookies received:', req.cookies);
     const token = req.cookies.jwt_refresh;
 
     if (!token) {
