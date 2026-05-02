@@ -1,7 +1,7 @@
 // src/components/common/ConverterPage.jsx
 import React, { useState } from 'react';
 import { Settings, FileText, Loader, AlertCircle, XCircle, Download, Lock, UserPlus, X } from 'lucide-react';
-import { useLocation, Link, useNavigate } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom'; // ✅ FIXED: removed unused useNavigate
 import { useAuth } from '@/lib/AuthContext';
 import FileUploader from '@/components/common/FileUploader';
 import { useFileBatch } from '@/hooks/useFileBatch';
@@ -10,7 +10,7 @@ import { useToast } from '@/context/ToastContext';
 
 const ConverterPage = ({ fromFormat, toFormat, title, description, settingsComponent: SettingsComponent, defaultSettings }) => {
   const location = useLocation();
-  const navigate = useNavigate();
+  // ✅ FIXED: removed `const navigate = useNavigate()` — was imported but never used
   const { authLoading, isAuthenticated } = useAuth();
   const toast = useToast();
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -33,18 +33,18 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
     formatFileSize,
   } = useFileBatch(defaultSettings);
 
-  // Initialize files from location state
+  // ✅ FIXED: was [] (empty deps) — would silently fail if location.state
+  // changed after mount. Now consistent with CompressorPage.
   React.useEffect(() => {
     if (location.state?.initialFiles && files.length === 0) {
       location.state.initialFiles.forEach(file => {
         addFiles([file.file]);
-        // Update settings if they exist
         if (file.settings) {
           updateFileSettings(file.id, file.settings);
         }
       });
     }
-  }, []);
+  }, [location.state, addFiles, updateFileSettings, files.length]);
 
   const startConversion = async () => {
     setIsProcessing(true);
@@ -245,7 +245,7 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
       {showAuthModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowAuthModal(false)}>
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-8 relative" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700">
+            <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700" aria-label="Close">
               <X className="w-6 h-6" />
             </button>
             <div className="text-center mb-6">

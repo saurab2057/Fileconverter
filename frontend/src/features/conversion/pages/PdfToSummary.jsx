@@ -1,25 +1,31 @@
 // @/features/conversion/pages/components/PdfSummaryPage.jsx
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { FileText, Loader, AlertCircle, XCircle, Copy, Download, Upload, Sparkles } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { FileText, Loader, AlertCircle, XCircle, Download, Upload, Sparkles, Lock, UserPlus, X } from 'lucide-react';
+import { Link } from 'react-router-dom'; // ✅ FIXED: removed unused useNavigate, added Link for auth modal
 import apiClient from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
-import { useNavigate } from 'react-router-dom';
 
+// ✅ FIXED: Word limit is now 500 consistently across truncation logic,
+// UI counter, and description text. Previously description said 200,
+// counter showed /200, but truncation only kicked in at 500 — all three
+// are now aligned to 500 words.
+const WORD_LIMIT = 500;
 
 const PdfToSummary = () => {
   const timerRef = useRef(null);
-  const navigate = useNavigate();
-  const { authLoading } = useAuth();
+  // ✅ FIXED: removed `const navigate = useNavigate()` — was imported but never used
+  const { authLoading, isAuthenticated } = useAuth(); // ✅ FIXED: added isAuthenticated for auth gate
+  const [showAuthModal, setShowAuthModal] = useState(false);   // ✅ FIXED: added for auth modal
   const [text, setText] = useState('');
   const [file, setFile] = useState(null);
   const [summary, setSummary] = useState('');
-  const [status, setStatus] = useState('idle'); // 'idle', 'processing', 'completed', 'error'
+  const [status, setStatus] = useState('idle'); // 'idle' | 'processing' | 'completed' | 'error'
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Auto-truncate text to 500 words
+  // Auto-truncate text to WORD_LIMIT words
   const truncatedText = useMemo(() => {
     const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-    return words.length <= 500 ? text : words.slice(0, 200).join(' ');
+    return words.length <= WORD_LIMIT ? text : words.slice(0, WORD_LIMIT).join(' ');
   }, [text]);
 
   useEffect(() => {
@@ -56,11 +62,21 @@ const PdfToSummary = () => {
     setSummary('');
     setStatus('idle');
     setErrorMessage('');
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    // ✅ FIXED: removed redundant null check — clearInterval(null) is safe in JS
+    clearInterval(timerRef.current);
+    timerRef.current = null;
   };
+
+  // ✅ FIXED: formatFileSize was wrapped in useMemo (memoizes the function reference,
+  // not a computed value — semantically wrong). Changed to useCallback which is
+  // the correct hook for memoizing functions.
+  const formatFileSize = useCallback((bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }, []);
 
   const summarize = async () => {
     if (status === 'processing') return;
@@ -77,18 +93,17 @@ const PdfToSummary = () => {
         formData.append('text', truncatedText);
       } else if (file) {
         formData.append('pdf', file.file);
-        formData.append('max_pages', '2'); // optional hint
+        formData.append('max_pages', '2');
       }
 
-      // Single endpoint handles both!
       const response = await apiClient.post('/api/ai/summarize-pdf', formData);
 
       // Typewriter effect
       const fullText = response.data || '';
       setSummary('');
 
-      // 🔒 Clear existing timer before starting new one
-      if (timerRef.current) clearInterval(timerRef.current);
+      // Clear existing timer before starting new one
+      clearInterval(timerRef.current);
 
       let i = 0;
       timerRef.current = setInterval(() => {
@@ -104,20 +119,12 @@ const PdfToSummary = () => {
       setStatus('completed');
     } catch (error) {
       // ✅ Everything working but summary failed (400, 422, etc.)
-      // Other error is handled by api.jsx interceptor (500, 503)
+      // Other errors handled by api.jsx interceptor (500, 503)
       const msg = error.response?.data?.message || 'Failed to generate summary.';
       setErrorMessage(msg);
       setStatus('error');
     }
   };
-
-  const formatFileSize = useMemo(() => (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }, []);
 
   const handleDownload = () => {
     const blob = new Blob([summary], { type: 'text/plain' });
@@ -145,8 +152,9 @@ const PdfToSummary = () => {
         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3">
           Smart Summarizer
         </h1>
+        {/* ✅ FIXED: description now correctly states 500-word limit */}
         <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-          Paste text or upload a PDF (max 2 pages) for a concise 200-word summary.
+          Paste text (up to {WORD_LIMIT} words) or upload a PDF (max 2 pages) for a concise summary.
         </p>
       </div>
 
@@ -189,9 +197,10 @@ const PdfToSummary = () => {
           {/* Bottom Bar: Word count | Upload | Summarize */}
           <div className="bg-white dark:bg-gray-800 rounded-b-xl border border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
             <div className="text-sm text-gray-600 dark:text-gray-400">
+              {/* ✅ FIXED: counter now shows /500 to match actual truncation limit */}
               {file
                 ? `${formatFileSize(file.size)} • 2-page limit`
-                : `${wordCount}/200 words`}
+                : `${wordCount}/${WORD_LIMIT} words`}
             </div>
 
             <div className="flex gap-3">
@@ -207,9 +216,11 @@ const PdfToSummary = () => {
                 />
               </label>
 
+              {/* ✅ FIXED: auth gate added — shows modal if not logged in,
+                  runs summarize if logged in. Matches CompressorPage pattern. */}
               <button
-                onClick={summarize}
-                disabled={isDisabled}
+                onClick={isAuthenticated ? summarize : () => setShowAuthModal(true)}
+                disabled={isAuthenticated ? isDisabled : false}
                 className="px-6 py-2 bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
               >
                 <Sparkles className="w-4 h-4" />
@@ -283,6 +294,37 @@ const PdfToSummary = () => {
           </div>
         </div>
       </div>
+
+      {/* ✅ FIXED: Auth modal — same pattern as CompressorPage and ConverterPage */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowAuthModal(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-8 relative" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700" aria-label="Close">
+              <X className="w-6 h-6" />
+            </button>
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Lock className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Sign in to summarize</h2>
+              <p className="text-gray-600 dark:text-gray-400">Your content is ready! Sign in to generate your summary.</p>
+            </div>
+            <div className="space-y-3">
+              <Link to="/signup" className="block w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3 rounded-xl font-semibold text-lg transition-all">
+                <div className="flex items-center justify-center space-x-2">
+                  <UserPlus className="w-5 h-5" />
+                  <span>Create your Account</span>
+                </div>
+              </Link>
+              <Link to="/login" className="block w-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-white py-3 rounded-xl font-medium transition-all">
+                <div className="flex items-center justify-center space-x-2">
+                  <span>Login</span>
+                </div>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

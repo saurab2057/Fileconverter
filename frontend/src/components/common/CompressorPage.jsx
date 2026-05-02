@@ -1,7 +1,7 @@
 // src/components/common/CompressorPage.jsx
 import React, { useState } from 'react';
 import { Settings, FileText, Loader, AlertCircle, XCircle, Download, Lock, UserPlus, X } from 'lucide-react';
-import { useLocation, Link, useNavigate } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom'; // ✅ FIXED: removed unused useNavigate
 
 import { useAuth } from '@/lib/AuthContext';
 import FileUploader from '@/components/common/FileUploader';
@@ -11,7 +11,7 @@ import { useToast } from '@/context/ToastContext';
 
 const CompressorPage = ({ acceptedFormats, title, description, settingsComponent: SettingsComponent, defaultSettings }) => {
   const location = useLocation();
-  const navigate = useNavigate();
+  // ✅ FIXED: removed `const navigate = useNavigate()` — was imported but never used
   const { authLoading, isAuthenticated } = useAuth();
   const toast = useToast();
   const [showAuthModal, setShowAuthModal] = useState(false);

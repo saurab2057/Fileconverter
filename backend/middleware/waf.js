@@ -14,9 +14,9 @@ import { hashIP } from '../utils/authSecurity.js';
 //   3. Null Byte Injection    — %00 tricks to bypass parsers
 //   4. Path Traversal         — ../../etc/passwd style escapes
 //   5. NoSQL Injection        — MongoDB $ operators as object keys
-//   5. Prototype Pollution     __proto__, constructor, prototype keys
-//   6. XSS                    — <script>, javascript:, event handlers (enhanced)
-//   7. Oversized Payloads     — raw body > 100KB (measured in bytes)
+//   6. Prototype Pollution     __proto__, constructor, prototype keys
+//   7. XSS                    — <script>, javascript:, event handlers (enhanced)
+//   8. Oversized Payloads     — raw body > 100KB (measured in bytes)
 //
 // Design decisions:
 //   - Fails OPEN on internal WAF error (next() not next(err))
@@ -47,7 +47,7 @@ const PATH_TRAVERSAL_PATTERNS = [
     /\\windows\\system32/i, // Windows system directory
     /\.\.%c0%af/i,          // Unicode overlong encoding of /
     /\.\.%c1%9c/i,          // Unicode overlong encoding (Windows variant)
-    /(\.{2,}\/)+/i,         // 🔥 NEW: repeated dot traversal (....//....//)
+    /(\.{2,}\/)+/i,         // repeated dot traversal (....//....//)
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -313,23 +313,29 @@ export const waf = (req, res, next) => {
         // ─────────────────────────────────────────────
         // CHECK 5: NoSQL Injection
         // ─────────────────────────────────────────────
-        if (containsMongoOperator(req.body) || containsMongoOperator(req.query)) {
-            const location = containsMongoOperator(req.body) ? 'body' : 'query';
+        const bodyInjected = containsMongoOperator(req.body);
+        const queryInjected = containsMongoOperator(req.query);
+ 
+        if (bodyInjected || queryInjected) {
+            const location = bodyInjected ? 'body' : 'query';
             logBlockedRequest(req, 'NOSQL_INJECTION', `Operator found in ${location}`);
             return res.status(403).json({ message: 'Forbidden.' });
         }
-
+ 
         // ─────────────────────────────────────────────
-        // CHECK 5.5: Prototype Pollution 🔥 NEW
+        // CHECK 6: Prototype Pollution
         // ─────────────────────────────────────────────
-        if (containsDangerousKey(req.body) || containsDangerousKey(req.query)) {
-            const location = containsDangerousKey(req.body) ? 'body' : 'query';
+        const bodyPolluted = containsDangerousKey(req.body);
+        const queryPolluted = containsDangerousKey(req.query);
+ 
+        if (bodyPolluted || queryPolluted) {
+            const location = bodyPolluted ? 'body' : 'query';
             logBlockedRequest(req, 'PROTOTYPE_POLLUTION', `Dangerous key in ${location}`);
             return res.status(403).json({ message: 'Forbidden.' });
         }
 
         // ─────────────────────────────────────────────
-        // CHECK 6: XSS Patterns (Enhanced)
+        // CHECK 7: XSS Patterns (Enhanced)
         // ─────────────────────────────────────────────
         const bodyAndQuery = `${bodyStr} ${queryStr}`;
         if (matchesAny(bodyAndQuery, XSS_PATTERNS)) {
@@ -338,7 +344,7 @@ export const waf = (req, res, next) => {
         }
 
         // ─────────────────────────────────────────────
-        // CHECK 7: Oversized Payload
+        // CHECK 8: Oversized Payload
         // ─────────────────────────────────────────────
         const PAYLOAD_LIMIT_BYTES = 100 * 1024; // 100KB
         const actualBytes = Buffer.byteLength(bodyStr, 'utf8');
