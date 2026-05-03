@@ -2,39 +2,143 @@
 
 Website Name: FileConverter Pro
 URL: https://fileconverter-pro.com
+Contact: support@fileconverter-pro.com
 
-Services Offered:
-- PNG to SVG conversion
-- MP4 to MP3 audio extraction and conversion.
-- Text or PDF to text summary with 5 page pdf limitation.
-- Batch file conversion (up to 5 files).
-- Cloud storage integration (Cloudinary) for profile pictures.
+─────────────────────────────────────────────
+SERVICES OFFERED
+─────────────────────────────────────────────
 
-Features:
-- Free tier: 5 conversions per day
-- Premium tier: Unlimited conversions, priority processing
-- Secure file handling (files deleted after 24 hours)
-- Google OAuth login supported
-- Admin dashboard for monitoring
+1. File Conversion
+   - Image: PNG ↔ JPG, PNG → SVG, PDF → JPG, plus WebP and GIF output
+   - Video: MP4, WebM, MKV, MOV, AVI cross‑conversion (H.264 encoding)
+   - Audio: MP3, WAV, AAC, FLAC extraction and conversion
+   - GIF creation from video clips
 
-Technology:
-- Frontend: React + Vite
-- Backend: Node.js + Express
-- AI: HuggingFace BART for summarization
-- Database: MongoDB
-- File Storage: Cloudinary
+2. File Compression
+   - JPEG, PNG, WebP, GIF – lossy optimization with adjustable quality
+   - Video – H.264 CRF-based compression (quality levels: high/medium/low)
+   - Audio – bitrate reduction (192kbps / 128kbps / 96kbps)
+   - All compression preserves original resolution/format unless you choose otherwise
 
-Contact:
-- Email: support@fileconverter-pro.com
-- No phone support currently
+3. AI Summarization
+   - Upload a PDF (max 2 MB, first 5 pages extracted) or paste text directly
+   - The system generates a concise plain‑text summary
 
-Pricing:
-- Free: $0/month (5 conversions/day)
-- Premium: $9.99/month (unlimited)
+4. Batch Processing
+   - Upload up to 5 files at once
+   - All files are processed in parallel
+   - You receive individual download links for each output
 
-Limitations:
-- Max file size: 10MB per file
-- Supported formats: PNG, JPG, MP4, MP3, PDF
-- NOT supporting: DOCX, XLS, AVI conversions
+─────────────────────────────────────────────
+SUPPORTED FORMATS (INPUT)
+─────────────────────────────────────────────
+Video:  MP4, MOV, MKV, AVI, WebM, MPEG, 3GPP
+Audio:  MP3, WAV, FLAC, AAC, OGG, M4A
+Image:  PNG, JPEG, GIF, WebP, BMP, TIFF, ICO
+Document: PDF (conversion to JPG or summarization only; SVG input is not allowed)
 
-=== END OF WEBSITE INFORMATION ===
+─────────────────────────────────────────────
+OUTPUT FORMATS
+─────────────────────────────────────────────
+Video:  MP4, WebM, MKV, MOV, AVI
+Audio:  MP3, WAV, AAC, FLAC
+Image:  PNG, JPG, WebP, SVG (from PNG only), GIF (from video only)
+Document: PDF is only accepted as input, not generated as output
+
+─────────────────────────────────────────────
+FILE SIZE & QUANTITY LIMITS
+─────────────────────────────────────────────
+- Single file: up to 100 MB (conversion/compression)
+- Batch total: all files combined must not exceed 100 MB
+- AI Summarizer PDF: exactly 2 MB
+- Maximum 5 files per batch request
+- If you send a larger file or exceed the total limit, the server rejects the upload immediately
+
+─────────────────────────────────────────────
+QUALITY / SETTINGS OPTIONS
+─────────────────────────────────────────────
+- Image compression: quality slider 0‑100 (lower = smaller file)
+- Video compression: high / medium / low (affects CRF value)
+- Audio compression: high (192kbps), medium (128kbps), low (96kbps)
+- Video resolution downscaling: original, 1080p, 720p, 480p, 360p
+- Audio rate control: VBR (variable) or CBR (constant bitrate)
+- Audio sample rate: auto, 8000, 11025, 16000, 22050, 32000, 44100, 48000 Hz
+- Audio channels: mono, stereo, or keep original
+- Trim: set start/end time (video and audio)
+- Remove audio: option to mute video entirely
+
+─────────────────────────────────────────────
+PRICING & ACCOUNT TIERS
+─────────────────────────────────────────────
+Free Tier ($0/month)
+- 5 conversions per day
+- Standard processing speed
+- 24‑hour file retention
+
+Premium Tier ($9.99/month)
+- Unlimited conversions per day
+- Priority processing (faster queue)
+- All other features identical
+
+Daily limit resets at midnight UTC. The counter is per user, not per IP.
+
+─────────────────────────────────────────────
+SECURITY & PRIVACY
+─────────────────────────────────────────────
+- All uploaded files are deleted from our servers after 24 hours
+- Files are stored only in memory during processing – never written to disk
+- Every file is scanned for malware, hidden payloads, and injection attacks before processing
+- HTTPS only – data is encrypted in transit
+- We use Google OAuth for secure login (no password stored on our side)
+- Profile pictures are stored on Cloudinary, a secure cloud platform
+- WebAuthn / passkey support for password‑free authentication
+- We do not share, sell, or mine your files or data
+
+─────────────────────────────────────────────
+COMMON ERRORS & TROUBLESHOOTING
+─────────────────────────────────────────────
+1. “File extension does not match content type”
+   → You renamed a file to a different extension. Restore the original extension or convert with a tool that matches the actual file type.
+
+2. “Compression did not produce an output file”
+   → The file might already be as small as possible, or the settings prevented a valid output. Try a milder quality setting.
+
+3. “Total file size exceeds 100 MB”
+   → The combined size of all files in one batch is over 100 MB. Split them into multiple requests.
+
+4. “No extractable text found”
+   → The PDF is likely image‑only (scanned pages). Our summarizer works with text‑based PDFs.
+
+5. “PDF processing timed out”
+   → The PDF may be corrupted or too complex. Try a different file.
+
+6. “Invalid settings JSON”
+   → The options you selected in the frontend became corrupted. Refresh the page and try again.
+
+─────────────────────────────────────────────
+ADMIN & MONITORING (not visible to end users)
+─────────────────────────────────────────────
+- Admin dashboard for viewing conversion logs, user activity, and blocked security events
+- Automatic daily cleanup of banned accounts (after 30 days)
+- Audit trail of all admin actions
+
+─────────────────────────────────────────────
+FREQUENTLY ASKED QUESTIONS
+─────────────────────────────────────────────
+Q: Can I convert DOCX or Excel files?
+A: No, we focus on media files and PDFs. Office documents are not supported.
+
+Q: How long does a conversion take?
+A: Most files process in under 30 seconds. Large videos may take a few minutes. Premium users receive priority.
+
+Q: Do you keep a copy of my files?
+A: No. Files are removed from our system 24 hours after processing.
+
+Q: What happens if my conversion fails?
+A: You’ll see a clear error message. It won’t count against your daily limit.
+
+Q: Is there an API?
+A: Currently we offer web‑based conversion only. An API is planned for the future.
+
+Q: Can I convert a video to GIF?
+A: Yes, you can upload a video and select “GIF” as the output. Trimming is supported.
