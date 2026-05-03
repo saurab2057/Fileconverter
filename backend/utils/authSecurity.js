@@ -1,4 +1,3 @@
-// utils/authSecurity.js
 import crypto from 'crypto';
 
 
@@ -53,4 +52,33 @@ export const isTokenValidAfterChange = (jwtTimestamp, passwordChangedAt) => {
 // ─────────────────────────────────────────────────────────────
 export const generateJti = () => {
     return crypto.randomUUID();
+};
+
+
+// ─────────────────────────────────────────────────────────────
+// DEVICE ID GENERATOR
+//
+// Creates a deterministic device fingerprint from the request:
+//   IP address (x‑forwarded‑for or socket) + User‑Agent string
+//
+// Used to generate a server‑side deviceId for session tracking,
+// eliminating the need for the client to send a deviceId.
+//
+// Why does this work?
+//   - Same device + same browser → same IP+UA → same hash
+//   - Different browser on same device → different UA → different hash
+//   - IP changes (mobile network) → different hash → new session
+//     (this is acceptable because session is per (user + deviceId);
+//      a new session will be upserted, old one remains but lastActive won't update)
+//
+// Security note:
+//   This is NOT a trusted device fingerprint – it's only a label
+//   for session grouping. No security decision relies on it alone.
+//   All authorisation still happens via JWT and refresh token rotation.
+// ─────────────────────────────────────────────────────────────
+export const generateDeviceId = (req) => {
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const userAgent = req.get('user-agent') || '';
+    const raw = `${ip}|${userAgent}`;
+    return crypto.createHash('sha256').update(raw).digest('hex');
 };

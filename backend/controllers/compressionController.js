@@ -43,19 +43,26 @@ export const batchCompress = async (req, res) => {
         }
     }
 
-    const settingsArray = req.body.settings ? JSON.parse(req.body.settings) : [];
+    let settingsArray = [];
+    if (req.body.settings) {
+        try {
+            settingsArray = JSON.parse(req.body.settings);
+        } catch (_) {
+            return res.status(400).json({ message: 'Invalid settings JSON format.' });
+        }
+    }
     const settingsMap = new Map(settingsArray.map(s => [s.originalName, s.settings]));
 
     const compressionPromises = req.files.map(async (file) => {
 
         const safeOriginalName = sanitizeFilename(file.originalname);
-        const originalSize     = file.size;
+        const originalSize = file.size;
 
         let job;
 
         try {
             const fileSettings = settingsMap.get(file.originalname) || {};
-            const fromFormat   = file.originalname.split('.').pop().toLowerCase();
+            const fromFormat = file.originalname.split('.').pop().toLowerCase();
 
             console.log(`[CloudConvert] Compressing ${safeOriginalName} (${fromFormat})`);
 
@@ -68,9 +75,9 @@ export const batchCompress = async (req, res) => {
                 console.log('Using JPEG compression (mozjpeg)...');
                 compressionTask = {
                     operation: 'optimize',
-                    input:     'import-1',
-                    engine:    'mozjpeg',
-                    quality:   parseInt(fileSettings.quality, 10) || 80,
+                    input: 'import-1',
+                    engine: 'mozjpeg',
+                    quality: parseInt(fileSettings.quality, 10) || 80,
                 };
             }
 
@@ -81,9 +88,9 @@ export const batchCompress = async (req, res) => {
                 console.log('Using PNG compression (pngquant)...');
                 compressionTask = {
                     operation: 'optimize',
-                    input:     'import-1',
-                    engine:    'pngquant',
-                    quality:   parseInt(fileSettings.quality, 10) || 80,
+                    input: 'import-1',
+                    engine: 'pngquant',
+                    quality: parseInt(fileSettings.quality, 10) || 80,
                 };
             }
 
@@ -93,11 +100,11 @@ export const batchCompress = async (req, res) => {
             else if (fromFormat === 'webp') {
                 console.log('Using WEBP compression (imagemagick)...');
                 compressionTask = {
-                    operation:     'convert',
-                    input:         'import-1',
+                    operation: 'convert',
+                    input: 'import-1',
                     output_format: 'webp',
-                    engine:        'imagemagick',
-                    quality:       parseInt(fileSettings.quality, 10) || 80,
+                    engine: 'imagemagick',
+                    quality: parseInt(fileSettings.quality, 10) || 80,
                 };
             }
 
@@ -108,9 +115,9 @@ export const batchCompress = async (req, res) => {
                 console.log('Using GIF compression (gifsicle)...');
                 compressionTask = {
                     operation: 'optimize',
-                    input:     'import-1',
-                    engine:    'gifsicle',
-                    colors:    parseInt(fileSettings.colors, 10) || 128,
+                    input: 'import-1',
+                    engine: 'gifsicle',
+                    colors: parseInt(fileSettings.colors, 10) || 128,
                 };
             }
 
@@ -126,23 +133,23 @@ export const batchCompress = async (req, res) => {
                 const qualityMap = { high: 23, medium: 28, low: 35 };
                 const resolutionMap = {
                     '1080p': { width: 1920, height: 1080 },
-                    '720p':  { width: 1280, height: 720  },
-                    '480p':  { width: 854,  height: 480  },
-                    '360p':  { width: 640,  height: 360  },
+                    '720p': { width: 1280, height: 720 },
+                    '480p': { width: 854, height: 480 },
+                    '360p': { width: 640, height: 360 },
                 };
 
                 compressionTask = {
-                    operation:     'convert',
-                    input:         'import-1',
+                    operation: 'convert',
+                    input: 'import-1',
                     output_format: fromFormat,
-                    engine:        'ffmpeg',
-                    video_codec:   'x264',
-                    audio_codec:   'copy',
-                    crf:           qualityMap[fileSettings.quality] || 28,
+                    engine: 'ffmpeg',
+                    video_codec: 'x264',
+                    audio_codec: 'copy',
+                    crf: qualityMap[fileSettings.quality] || 28,
                 };
 
                 if (fileSettings.resolution && resolutionMap[fileSettings.resolution]) {
-                    compressionTask.width  = resolutionMap[fileSettings.resolution].width;
+                    compressionTask.width = resolutionMap[fileSettings.resolution].width;
                     compressionTask.height = resolutionMap[fileSettings.resolution].height;
                 }
             }
@@ -157,11 +164,11 @@ export const batchCompress = async (req, res) => {
                 const bitrateMap = { high: 192, medium: 128, low: 96 };
 
                 compressionTask = {
-                    operation:     'convert',
-                    input:         'import-1',
+                    operation: 'convert',
+                    input: 'import-1',
                     output_format: fromFormat,
-                    engine:        'ffmpeg',
-                    audio_codec:   fromFormat,
+                    engine: 'ffmpeg',
+                    audio_codec: fromFormat,
                     audio_bitrate: (bitrateMap[fileSettings.quality] || 128) * 1000,
                 };
             }
@@ -178,9 +185,9 @@ export const batchCompress = async (req, res) => {
             job = await cloudConvert.jobs.create({
                 tag: `compress-${fromFormat}`,
                 tasks: {
-                    'import-1':   { operation: 'import/upload' },
+                    'import-1': { operation: 'import/upload' },
                     'compress-1': compressionTask,
-                    'export-1':   { operation: 'export/url', input: 'compress-1' }
+                    'export-1': { operation: 'export/url', input: 'compress-1' }
                 }
             });
 
@@ -198,11 +205,11 @@ export const batchCompress = async (req, res) => {
                 throw new Error('Compression did not produce an output file.');
             }
 
-            const outputFile     = exportTask.result.files[0];
-            const downloadUrl    = outputFile.url;
+            const outputFile = exportTask.result.files[0];
+            const downloadUrl = outputFile.url;
             const compressedSize = outputFile.size;
-            const savedBytes     = originalSize - compressedSize;
-            const savedPercent   = originalSize > 0
+            const savedBytes = originalSize - compressedSize;
+            const savedPercent = originalSize > 0
                 ? Math.round((savedBytes / originalSize) * 100)
                 : 0;
 
@@ -219,9 +226,9 @@ export const batchCompress = async (req, res) => {
             // Save to history
             try {
                 const historyRecord = new FileHistory({
-                    userId:      req.user.id,
-                    filename:    outputFile.filename,
-                    format:      fromFormat,
+                    userId: req.user.id,
+                    filename: outputFile.filename,
+                    format: fromFormat,
                     sizeInBytes: compressedSize,
                 });
                 await historyRecord.save();
@@ -234,8 +241,8 @@ export const batchCompress = async (req, res) => {
             }
 
             return {
-                originalName:    file.originalname,
-                success:         true,
+                originalName: file.originalname,
+                success: true,
                 downloadUrl,
                 originalSize,       // bytes — frontend uses for "X MB → Y MB"
                 compressedSize,     // bytes
@@ -247,8 +254,8 @@ export const batchCompress = async (req, res) => {
             console.error(`[CloudConvert] Error compressing ${safeOriginalName}:`, error);
             return {
                 originalName: file.originalname,
-                success:      false,
-                message:      'Compression failed. Please check your file and try again.'
+                success: false,
+                message: 'Compression failed. Please check your file and try again.'
             };
         }
     });

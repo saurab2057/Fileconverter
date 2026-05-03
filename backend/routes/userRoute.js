@@ -6,9 +6,6 @@ import { getUserProfile, updateUserProfile, changePassword } from '../controller
 
 const router = express.Router();
 
-// GET /api/user/
-router.get('/', [authenticateToken, userReadLimiter], getUserProfile);
-
 // GET /api/user/profile
 router.get('/profile', [authenticateToken, userReadLimiter], getUserProfile);
 

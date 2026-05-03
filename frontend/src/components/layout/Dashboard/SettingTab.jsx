@@ -43,9 +43,8 @@ const Label = ({ children }) => (
 
 const Input = ({ className = '', error, ...props }) => (
   <input
-    className={`w-full px-3 py-2 text-[13px] border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed transition-shadow ${
-      error ? 'border-red-400 dark:border-red-600' : 'border-gray-200 dark:border-gray-600'
-    } ${className}`}
+    className={`w-full px-3 py-2 text-[13px] border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed transition-shadow ${error ? 'border-red-400 dark:border-red-600' : 'border-gray-200 dark:border-gray-600'
+      } ${className}`}
     {...props}
   />
 );
@@ -154,6 +153,7 @@ const SettingsTab = () => {
       await authService.changePassword({
         currentPassword: data.currentPassword,
         newPassword: data.newPassword,
+        confirmNewPassword: data.confirmNewPassword,
       });
       toast.success('Password changed. Signing you out...');
       resetPassword();
@@ -175,17 +175,26 @@ const SettingsTab = () => {
 
         <div className="flex items-center gap-4 px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <div className="relative flex-shrink-0">
-            <img
-              src={picPreview || user?.profilePictureUrl || ''}
-              alt="Profile"
-              referrerPolicy={isGoogleUrl(picPreview || user?.profilePictureUrl) ? 'no-referrer' : 'strict-origin-when-cross-origin'}
-              onError={(e) => {
-                e.target.onerror = null;
-                const initial = encodeURIComponent((user?.name || 'U').charAt(0).toUpperCase());
-                e.target.src = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='52' height='52'><rect width='52' height='52' rx='26' fill='%236366f1'/><text x='26' y='34' text-anchor='middle' font-size='20' fill='white' font-family='system-ui'>${initial}</text></svg>`;
-              }}
-              className="w-13 h-13 w-[52px] h-[52px] rounded-full object-cover"
-            />
+            {/* Profile image or fallback initial */}
+            {(picPreview || user?.profilePictureUrl) ? (
+              <img
+                src={picPreview || user?.profilePictureUrl}
+                alt="Profile"
+                referrerPolicy={isGoogleUrl(picPreview || user?.profilePictureUrl) ? 'no-referrer' : 'strict-origin-when-cross-origin'}
+                onError={(e) => {
+                  e.target.onerror = null;
+                  const initial = encodeURIComponent((user?.name || 'U').charAt(0).toUpperCase());
+                  e.target.src = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='52' height='52'><rect width='52' height='52' rx='26' fill='%236366f1'/><text x='26' y='34' text-anchor='middle' font-size='20' fill='white' font-family='system-ui'>${initial}</text></svg>`;
+                }}
+                className="w-[52px] h-[52px] rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-[52px] h-[52px] rounded-full bg-blue-600 flex items-center justify-center text-white text-xl font-semibold">
+                {(user?.name || 'U').charAt(0).toUpperCase()}
+              </div>
+            )}
+
+            {/* Camera upload button - always visible over the image/fallback */}
             <label
               htmlFor="profilePicInput"
               className="absolute bottom-0 right-0 w-5 h-5 bg-gray-800 dark:bg-white rounded-full flex items-center justify-center cursor-pointer border-2 border-white dark:border-gray-900"

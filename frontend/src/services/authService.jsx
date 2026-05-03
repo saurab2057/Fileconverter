@@ -10,7 +10,6 @@ export const authService = {
       email: credentials.email,
       password: credentials.password,
       'recaptcha-token': credentials.recaptchaToken,
-      deviceId: credentials.deviceId, // 👈 Add deviceId
     });
     return data;
   },
@@ -25,19 +24,17 @@ export const authService = {
       password: userData.password,
       confirmPassword: userData.confirmPassword,
       'recaptcha-token': userData.recaptchaToken,
-      deviceId: userData.deviceId, // 👈 Add deviceId
     });
     return data;
   },
 
   /**
    * Google OAuth login.
-   * @param {Object} googleData - { access_token, deviceId }
+   * @param {Object} googleData - { access_token}
    */
   googleAuth: async (googleData) => {
     const { data } = await apiClient.post('/api/auth/google', {
       access_token: googleData.access_token,
-      deviceId: googleData.deviceId, // 👈 Add deviceId
     });
     return data;
   },
@@ -128,6 +125,7 @@ export const authService = {
     const { data } = await apiClient.post('/api/user/change-password', {
       currentPassword: passwords.currentPassword,
       newPassword: passwords.newPassword,
+      confirmNewPassword: passwords.confirmNewPassword,
     });
     return data;
   },

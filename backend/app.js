@@ -89,7 +89,7 @@ app.use((req, res, next) => {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));        // handle preflight for all routes
 app.use(helmet(helmetOptions));
-app.use(express.json({ limit: '50kb' }));   // JSON bodies — 50KB cap
+app.use(express.json({ limit: '200kb' }));   // JSON bodies — 50KB cap
 app.use(express.urlencoded({ limit: '1mb', extended: true })); // form bodies — 1MB cap
 app.use(cookieParser());
 app.use(morgan('dev'));

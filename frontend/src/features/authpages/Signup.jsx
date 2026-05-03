@@ -11,7 +11,7 @@ import { signupSchema } from '@/utils/validationSchemas';
 import { authService } from '@/services/authService';
 import { RECAPTCHA_SITE_KEY } from '@/lib/constants';
 import { useToast } from '@/context/ToastContext';
-import { getDeviceId } from '@/utils/deviceFingerprint';
+
 
 
 const SignUpForm = () => {
@@ -41,14 +41,12 @@ const onSubmit = async (data) => {
   setIsSubmitting(true);
   try {
     const token = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'signup' });
-    const deviceId = getDeviceId(); // 👈 Add this
     await authService.signup({
       name: data.name,
       email: data.email,
       password: data.password,
       confirmPassword: data.confirmPassword,
       recaptchaToken: token,
-      deviceId, // 👈 Include deviceId
     });
     toast.success('Account created successfully! Please login.');
     navigate('/login', { replace: true });
@@ -59,14 +57,11 @@ const onSubmit = async (data) => {
   }
 };
 
-// Also add deviceId to Google signup (same as login flow)
 const handleGoogleLoginSuccess = async (tokenResponse) => {
   setIsSubmitting(true);
   try {
-    const deviceId = getDeviceId(); // 👈 Add this
     const response = await authService.googleAuth({
       access_token: tokenResponse.access_token,
-      deviceId, // 👈 Include deviceId
     });
     login(response.accessToken, response.user);
     toast.success('Login successful!');

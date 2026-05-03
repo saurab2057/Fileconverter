@@ -189,3 +189,24 @@ export const passkeyLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+
+// WHO   : Anyone (unauthenticated)
+// ROUTE : POST /api/auth/refresh-token
+// WHY   : Prevents brute force on expired/invalid refresh tokens.
+//         Each attempt does DB lookups (session + user). Limits IP to 30 tries/15min.
+//         Even valid tokens are rate-limited per IP to slow credential stuffing.
+export const refreshTokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,     // 15 minutes
+  max: 30,                       // 30 attempts per 15 minutes per IP
+  skip: () => isTest(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    console.warn(`🚨 [REFRESH] Excessive refresh attempts — IP: ${req.ip}`);
+    return res.status(429).json({
+      success: false,
+      message: 'Too many refresh attempts. Please try again later.',
+    });
+  },
+});

@@ -5,23 +5,38 @@ import Session from '../../models/Session.js';
 import { Resend } from 'resend';
 import { logUserActivity } from '../../middleware/auditLogger.js';
 
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-/**
- * 🔒 FORGOT PASSWORD: Sends reset link (token in URL - frontend will exchange)
- */
+// ─────────────────────────────────────────────────────────────
+// FORGOT PASSWORD
+//
+// Flow:
+//   1. Find user by email (only if exists, active, and has email provider)
+//   2. Generate a short-lived JWT (10 min) containing only userId
+//   3. Send reset link to user's email
+//   4. Always return generic success (prevents email enumeration)
+//
+// FIXES applied:
+//   - Added check for authProvider === 'email' and status === 'active'
+//   - Changed JWT payload from { user: { id } } to { userId } (consistent structure)
+//   - Only sends email if user qualifies; otherwise silently ignores
+// ─────────────────────────────────────────────────────────────
 export const forgotPassword = async (req, res) => {
-    const resend = new Resend(process.env.RESEND_API_KEY);
     const resetPasswordSecret = process.env.RESET_PASSWORD_SECRET_KEY;
-
     const { email } = req.body;
+
     try {
         const user = await User.findOne({ email });
-        if (user) {
+
+        // ✅ FIX: Only proceed if user exists, is active, and uses email login
+        if (user && user.status === 'active' && user.authProvider === 'email') {
+            // ✅ FIX: JWT payload now { userId } – flat, not nested
             const resetToken = jwt.sign(
-                { user: { id: user.id } },
+                { userId: user._id.toString() },
                 resetPasswordSecret,
                 { expiresIn: '10m' }
             );
+
             const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
             await resend.emails.send({
@@ -36,7 +51,8 @@ export const forgotPassword = async (req, res) => {
                        </p>`
             });
 
-            const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+            const forwarded = req.headers['x-forwarded-for'];
+            const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress || '';
             await logUserActivity(
                 user._id,
                 'PASSWORD_RESET_REQUESTED',
@@ -46,8 +62,9 @@ export const forgotPassword = async (req, res) => {
                 req.get('user-agent')
             );
         }
+        // Always return generic message (security: don't reveal if email exists)
         return res.status(200).json({
-            message: 'Please check your registered email for the password reset link. If you do not receive an email, please check your spam folder or try again.'
+            message: 'If an active email account exists, you will receive a reset link. Please check your spam folder.'
         });
     } catch (error) {
         console.error('Forgot Password Error:', error);
@@ -55,9 +72,17 @@ export const forgotPassword = async (req, res) => {
     }
 };
 
-/**
- * 🔒 VALIDATE RESET TOKEN
- */
+// ─────────────────────────────────────────────────────────────
+// VALIDATE RESET TOKEN
+//
+// Flow:
+//   1. Verify the reset token (from email link)
+//   2. On success, issue a short-lived httpOnly cookie 'reset_session'
+//   3. The cookie is used in resetPassword to complete the operation
+//
+// FIXES applied:
+//   - Now uses decoded.userId (matching new JWT structure from forgotPassword)
+// ─────────────────────────────────────────────────────────────
 export const validateResetToken = async (req, res) => {
     const resetPasswordSecret = process.env.RESET_PASSWORD_SECRET_KEY;
     const resetSessionSecret = process.env.COOKIE_SECRET_KEY;
@@ -70,9 +95,10 @@ export const validateResetToken = async (req, res) => {
     try {
         const decoded = jwt.verify(token, resetPasswordSecret);
 
+        // ✅ FIX: Access userId directly (no nested user.id)
         const resetSession = jwt.sign(
             {
-                userId: decoded.user.id,
+                userId: decoded.userId,
                 purpose: 'password_reset',
                 jti: crypto.randomUUID()
             },
@@ -104,9 +130,21 @@ export const validateResetToken = async (req, res) => {
     }
 };
 
-/**
- * 🔒 RESET PASSWORD
- */
+// ─────────────────────────────────────────────────────────────
+// RESET PASSWORD
+//
+// Flow:
+//   1. Verify the reset_session cookie (httpOnly)
+//   2. Find user and validate status + provider (must be active email account)
+//   3. Hash and save new password (automatic via User model pre-save)
+//   4. Revoke all sessions for this user
+//   5. Clear reset cookie and return success
+//
+// FIXES applied:
+//   - Added status check: only active users can reset
+//   - Added provider check: only email accounts can reset
+//   - Already used decoded.userId correctly (no change needed here)
+// ─────────────────────────────────────────────────────────────
 export const resetPassword = async (req, res) => {
     const resetSessionSecret = process.env.COOKIE_SECRET_KEY;
 
@@ -130,15 +168,29 @@ export const resetPassword = async (req, res) => {
         }
 
         const userToReset = await User.findById(decoded.userId).select('+password');
+
         if (!userToReset) {
             return res.status(404).json({ message: 'User not found.' });
         }
+
+        // ✅ FIX: Block inactive accounts
+        if (userToReset.status !== 'active') {
+            return res.status(403).json({ message: 'Account is not active. Cannot reset password.' });
+        }
+
+        // ✅ FIX: Block Google-only accounts from setting a password
+        if (userToReset.authProvider !== 'email') {
+            return res.status(400).json({ message: 'This account uses Google login. No password to reset.' });
+        }
+
         userToReset.password = newPassword;
         await userToReset.save();
 
+        // Revoke all sessions after password change
         await Session.deleteMany({ user: decoded.userId });
 
-        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+        const forwarded = req.headers['x-forwarded-for'];
+        const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress || '';
         await logUserActivity(
             decoded.userId,
             'PASSWORD_RESET_COMPLETED',

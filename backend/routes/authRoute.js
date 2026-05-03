@@ -1,5 +1,5 @@
 import express from 'express';
-import { authLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, refreshTokenLimiter } from '../middleware/rateLimiter.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import {
     signupValidation,
@@ -36,7 +36,7 @@ router.post('/reset-password', ...newPasswordValidation, handleValidationErrors,
 
 
 router.post('/validate-reset-token', authLimiter, ...tokenValidation, handleValidationErrors, validateResetToken);
-router.post('/refresh-token', refreshToken);
+router.post('/refresh-token', refreshTokenLimiter, refreshToken);
 router.post('/logout', logout);
 
 // 🔒 NEW: Session Management Routes (Protected)

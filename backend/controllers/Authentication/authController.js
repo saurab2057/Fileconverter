@@ -3,17 +3,24 @@ import jwt from 'jsonwebtoken';
 import User from '../../models/User.js';
 import Session from '../../models/Session.js';
 import { saveUserMetadata } from '../../middleware/collectUserMetadata.js';
-import { hashIP, generateJti } from '../../utils/authSecurity.js';
+import { hashIP, generateJti, generateDeviceId } from '../../utils/authSecurity.js'; // ✅ added generateDeviceId
 import { logUserActivity } from '../../middleware/auditLogger.js';
 
 
 // ─────────────────────────────────────────────────────────────
 // CORE HELPER: handleLoginSuccess
-// Called after any successful login (local or Google).
+// Called after any successful login (local, Google, or passkey).
+//
+// FIXES applied:
+//   1. Removed req.body.deviceId requirement → now uses generateDeviceId(req)
+//   2. Replaced all user.id with user._id.toString() (Mongoose safe)
+//   3. Changed error handling: returns 500 JSON instead of throwing
+//   4. Added generateDeviceId import from authSecurity.js
+//
 // Responsibilities:
 //   1. Generate a short-lived access token (JWT)
 //   2. Generate a long-lived refresh token with a unique JTI
-//   3. Save the session to the Session collection (for tracking)
+//   3. Save the session to the Session collection (using server‑generated deviceId)
 //   4. Set the refresh token as an httpOnly cookie
 //   5. Build the user info object to return to the client
 //   6. Return the access token + user info to the client
@@ -21,21 +28,19 @@ import { logUserActivity } from '../../middleware/auditLogger.js';
 // ─────────────────────────────────────────────────────────────
 export const handleLoginSuccess = async (res, user, req) => {
 
-    // ─────────────────────────────────────────────────────────────
     // Environment secrets & token config
-    // ─────────────────────────────────────────────────────────────
     const accessTokenSecret = process.env.ACCESS_SECRET_KEY;
     const refreshTokenSecret = process.env.REFRESH_SECRET_KEY;
     const accessTokenExpiry = process.env.ACCESS_TOKEN_EXPIRY || '15m';
     const refreshTokenExpiry = process.env.REFRESH_TOKEN_EXPIRY || '7d';
 
-
     try {
-        // Step 1: Sign a short-lived access token containing essential user info
+        // Step 1: Sign short-lived access token with user info
+        // Note: user._id.toString() ensures string type (safe for frontend)
         const accessToken = jwt.sign(
             {
                 userInfo: {
-                    id: user.id,
+                    id: user._id.toString(),
                     name: user.name,
                     email: user.email,
                     role: user.role,
@@ -48,25 +53,20 @@ export const handleLoginSuccess = async (res, user, req) => {
             { expiresIn: accessTokenExpiry }
         );
 
-        // Step 2: Generate a unique JTI (JWT ID) for the refresh token
-        // JTI allows us to invalidate specific sessions (e.g., on logout)
+        // Step 2: Generate unique JTI and refresh token
         const jti = generateJti();
         const refreshToken = jwt.sign(
-            { userId: user.id, jti },
+            { userId: user._id.toString(), jti },
             refreshTokenSecret,
             { expiresIn: refreshTokenExpiry }
         );
 
-        // Step 3: Collect request metadata for session tracking
+        // Step 3: Collect request metadata and generate deviceId server‑side
         const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
         const userAgent = req.get('user-agent') || 'unknown';
-        const deviceId = req.body.deviceId;
+        const deviceId = generateDeviceId(req);  // ✅ FIX: generated, not from body
 
-        if (!deviceId) {
-            return res.status(400).json({ message: 'Device ID is required.' });
-        }
-        // Step 4: Persist the session in the database
-        // UPSERT session (one per user+device)
+        // Step 4: Upsert session (one per user + deviceId)
         await Session.findOneAndUpdate(
             { user: user._id, deviceId },
             {
@@ -74,27 +74,22 @@ export const handleLoginSuccess = async (res, user, req) => {
                 userAgent,
                 ipHash: hashIP(ip),
                 lastActive: Date.now(),
-                // createdAt is only set on insert
             },
             { upsert: true, new: true, setDefaultsOnInsert: true }
         );
 
-        // Step 5: Set the refresh token as a secure httpOnly cookie
-        // httpOnly = not accessible via JS (XSS protection)
-        // secure = HTTPS only in production
-        // sameSite = lax to allow cookie on normal navigations
+        // Step 5: Set refresh token as httpOnly cookie
         res.cookie('jwt_refresh', refreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+            maxAge: 7 * 24 * 60 * 60 * 1000,
             path: '/',
         });
 
-        // Step 6: Build the user info object to send back to the client
-        // Note: sensitive fields like password are intentionally excluded
+        // Step 6: Build sanitised user info (no password, no sensitive fields)
         const userInfo = {
-            id: user.id,                  // ✅ string, consistent with JWT payload above it
+            id: user._id.toString(),
             name: user.name,
             email: user.email,
             role: user.role,
@@ -104,7 +99,7 @@ export const handleLoginSuccess = async (res, user, req) => {
             authProvider: user.authProvider || 'email',
         };
 
-        // Step 7: Log the login event for audit/activity tracking
+        // Step 7: Log successful login
         await logUserActivity(
             user._id,
             'USER_LOGIN',
@@ -115,9 +110,11 @@ export const handleLoginSuccess = async (res, user, req) => {
         );
 
         return res.json({ accessToken, user: userInfo });
+
     } catch (error) {
         console.error('Token generation error:', error);
-        throw new Error('Server error during token generation');
+        // ✅ FIX: return JSON instead of throwing (unhandled rejection)
+        return res.status(500).json({ message: 'Server error during token generation' });
     }
 };
 
@@ -125,25 +122,25 @@ export const handleLoginSuccess = async (res, user, req) => {
 // ─────────────────────────────────────────────────────────────
 // GOOGLE AUTH: googleAuth
 // Handles login/signup via Google OAuth.
+//
 // Flow:
-//   1. Verify the Google access token with Google's userinfo API
-//   2. Check if a user with this email already exists
-//      a. If NOT → create a new user with authProvider: 'google'
-//      b. If YES + authProvider is 'local' → block (provider conflict)
-//      c. If YES + authProvider is 'google' → allow, update picture if changed
+//   1. Verify Google access token with Google's userinfo API
+//   2. Check if user exists by email
+//      a. New → create with authProvider: 'google'
+//      b. Existing + email provider → block (provider conflict)
+//      c. Existing + google provider → allow, update picture if changed
 //   3. Block suspended users
-//   4. Save metadata + proceed to handleLoginSuccess
+//   4. Save metadata + proceed to handleLoginSuccess (deviceId generated inside)
 // ─────────────────────────────────────────────────────────────
 export const googleAuth = async (req, res) => {
     const { access_token } = req.body;
 
-    // Reject if no Google token was provided
     if (!access_token) {
         return res.status(400).json({ message: 'Google access token missing.' });
     }
 
     try {
-        // Step 1: Verify the Google token by calling Google's userinfo endpoint
+        // Verify Google token
         const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
             headers: { Authorization: `Bearer ${access_token}` },
         });
@@ -153,43 +150,41 @@ export const googleAuth = async (req, res) => {
         }
 
         const data = await response.json();
-
-        // Ensure Google returned a valid email (required for user lookup)
         if (!data.email) {
             return res.status(401).json({ message: 'Google auth did not return a valid email.' });
         }
 
         const { name, email, picture } = data;
 
-        // Step 2: Look up the user by email
+        // Look up existing user
         let user = await User.findOne({ email });
 
         if (!user) {
-            // 2a. New user → create account with Google as the auth provider
+            // New user: create with Google provider
             user = new User({ name, email, authProvider: 'google', profilePictureUrl: picture });
             await user.save();
+            // Note: USER_CREATED activity is not logged here for Google signups.
+            // The login activity below will capture the event.
         } else {
-            // 2b. Email exists but was registered with email/password → block
-            // Prevents someone from hijacking a local account via Google OAuth
+            // Existing user: block if email/password account tries Google OAuth
             if (user.authProvider === 'email') {
                 return res.status(400).json({
                     message: 'This email is registered with a password. Please login with your email and password.'
                 });
             }
-
-            // 2c. Existing Google user → update profile picture if it has changed
+            // Update profile picture if changed
             if (user.profilePictureUrl !== picture) {
                 user.profilePictureUrl = picture;
                 await user.save();
             }
         }
 
-        // Step 3: Block suspended users from logging in
+        // Block suspended users
         if (user.status !== 'active') {
             return res.status(403).json({ message: 'Your account has been banned. Please contact support.' });
         }
 
-        // Step 4: Save request metadata (IP, device, etc.) then complete login
+        // Save metadata and complete login (handleLoginSuccess will generate deviceId)
         await saveUserMetadata(req, user._id);
         return handleLoginSuccess(res, user, req);
 
@@ -203,37 +198,35 @@ export const googleAuth = async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // SIGNUP: signup
 // Registers a new user with email + password.
+//
 // Flow:
-//   1. Check if the email is already taken
-//      a. If taken by Google account → tell user to use Google login
-//      b. If taken by local account → tell user to login instead
-//   2. Create the new user (password hashing handled by User model pre-save hook)
-//   3. Log the signup event
+//   1. Check if email already taken
+//      a. Google account → redirect to Google login
+//      b. Email account → tell user to login
+//   2. Create new user (password hashed by User model pre-save hook)
+//   3. Log USER_CREATED event
 // ─────────────────────────────────────────────────────────────
 export const signup = async (req, res) => {
     try {
         const { email, password, name } = req.body;
 
-        // Step 1: Check if this email is already registered
+        // Check existing user
         const existingUser = await User.findOne({ email });
 
         if (existingUser) {
-            // 1a. Email belongs to a Google account → direct to Google login
             if (existingUser.authProvider === 'google') {
                 return res.status(400).json({
                     message: 'This email is registered with Google. Please use Google login.'
                 });
             }
-            // 1b. Email belongs to a local account → direct to login
             return res.status(400).json({ message: 'Email already registered. Please login.' });
         }
 
-        // Step 2: Create the new user
-        // Password is hashed automatically via the User model's pre-save hook
+        // Create new user
         const user = new User({ email, password, name });
         await user.save();
 
-        // Step 3: Log the signup event for audit tracking
+        // Log signup activity
         const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
         await logUserActivity(
             user._id,
@@ -247,7 +240,6 @@ export const signup = async (req, res) => {
         return res.status(201).json({ message: 'User registered successfully. Please login.' });
 
     } catch (err) {
-        // Fallback duplicate key error (race condition safety net)
         if (err.code === 11000) {
             return res.status(400).json({ message: 'Email already registered. Please login.' });
         }
@@ -260,41 +252,42 @@ export const signup = async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // LOGIN: login
 // Authenticates a user with email + password.
+//
 // Flow:
-//   1. Find user by email (include password field which is excluded by default)
-//   2. If no user or no password → could be a Google-only account → reject
-//   3. Compare provided password with the stored hash
-//   4. Save metadata + proceed to handleLoginSuccess
+//   1. Find user by email (select password field)
+//   2. Reject if user not found or has no password (Google account)
+//   3. Compare password with stored hash
+//   4. Block suspended users
+//   5. Save metadata + proceed to handleLoginSuccess
 // ─────────────────────────────────────────────────────────────
 export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // Step 1: Find user by email, explicitly selecting the password field
-        // (password is excluded by default in the User model schema)
+        // Fetch user including password field (excluded by default)
         const user = await User.findOne({ email }).select('+password');
 
-        // Step 2: Reject if user not found or has no password (Google-only account)
+        // Reject if no user or password missing (Google-only)
         if (!user || !user.password) {
             return res.status(401).json({
                 message: 'Invalid credentials or please use your social login provider.'
             });
         }
 
-        // Step 3: Compare the provided plain-text password against the stored hash
+        // Verify password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({ message: 'Invalid credentials.' });
         }
 
-        // Step 4: ✅ Added — consistent with googleAuth, startAuthentication, verifyAuthentication
+        // Check account status
         if (user.status !== 'active') {
             return res.status(403).json({
                 message: 'Your account has been banned. Please contact support.'
             });
         }
 
-        // Step 5: Save request metadata then complete login
+        // Save metadata and complete login
         await saveUserMetadata(req, user._id);
         return handleLoginSuccess(res, user, req);
 

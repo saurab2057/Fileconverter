@@ -1,8 +1,6 @@
 // backend/index.js
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
-import cluster from 'cluster';
-import os from 'os';
 
 // ─────────────────────────────────────────────────────────────
 // 🔒 STEP 1: LOAD ENV
@@ -21,7 +19,7 @@ function validateEnvironmentVariables() {
         "MONGO_URI",
     ];
 
-    const productionSecrets = [
+    const serviceSecrets = [
         'CLOUDINARY_CLOUD_NAME',
         'CLOUDINARY_API_KEY',
         'CLOUDINARY_API_SECRET',
@@ -29,11 +27,25 @@ function validateEnvironmentVariables() {
         'RESEND_API_KEY',
         'FRONTEND_URL',
         'RECAPTCHA_SECRET_KEY',
+        'EMAIL_FROM',
+        'ADMIN_EMAIL',
+        'INTERNAL_API_KEY',
+        'AUDIT_CHECKPOINT_SALT',
+        'IP_HASH_SALT',
+    ];
+
+    const optionalWarnings = [
+        { key: 'HF_TOKEN', msg: 'Hugging Face token missing – AI features will be disabled' },
+        { key: 'AI_SUMMARIZE_URL', msg: 'AI summarization service URL missing' },
+        { key: 'RP_NAME', msg: 'WebAuthn RP_NAME is not set' },
+        { key: 'RP_ID', msg: 'WebAuthn RP_ID is not set' },
+        { key: 'RP_ORIGIN', msg: 'WebAuthn RP_ORIGIN is not set' },
     ];
 
     const missing = [];
     const warnings = [];
 
+    // Critical secrets
     criticalSecrets.forEach(varName => {
         if (!process.env[varName]?.trim()) {
             missing.push(`❌ ${varName} (CRITICAL)`);
@@ -42,21 +54,33 @@ function validateEnvironmentVariables() {
         }
     });
 
-    if (process.env.NODE_ENV === 'production') {
-        productionSecrets.forEach(varName => {
-            if (!process.env[varName]?.trim()) {
-                missing.push(`❌ ${varName} (PRODUCTION REQUIRED)`);
+    // Service secrets – mandatory in production, warning in dev
+    serviceSecrets.forEach(varName => {
+        if (!process.env[varName]?.trim()) {
+            if (process.env.NODE_ENV === 'production') {
+                missing.push(`❌ ${varName} (REQUIRED IN PRODUCTION)`);
+            } else {
+                warnings.push(`⚠️ ${varName} is empty – some features may fail`);
             }
-        });
+        }
+    });
 
+    // Additional production checks
+    if (process.env.NODE_ENV === 'production') {
         if (process.env.FRONTEND_URL?.includes('localhost')) {
             warnings.push('⚠️ FRONTEND_URL uses localhost in production');
         }
-
         if (!process.env.PORT || isNaN(Number(process.env.PORT))) {
-            missing.push('❌ PORT must be valid in production');
+            missing.push('❌ PORT must be a valid number in production');
         }
     }
+
+    // Optional but recommended
+    optionalWarnings.forEach(({ key, msg }) => {
+        if (!process.env[key]?.trim()) {
+            warnings.push(`ℹ️ ${key}: ${msg}`);
+        }
+    });
 
     if (missing.length) {
         console.error('\n❌ FATAL ENV ERROR\n');
@@ -65,7 +89,7 @@ function validateEnvironmentVariables() {
     }
 
     if (warnings.length) {
-        console.warn('\n⚠️ WARNINGS\n');
+        console.warn('\n⚠️ ENV WARNINGS\n');
         warnings.forEach(w => console.warn(w));
     }
 }
@@ -73,7 +97,7 @@ function validateEnvironmentVariables() {
 validateEnvironmentVariables();
 
 // ─────────────────────────────────────────────────────────────
-// 🔧 COMMON BOOTSTRAP
+// 🔧 COMMON BOOTSTRAP (DB + Config)
 // ─────────────────────────────────────────────────────────────
 async function bootstrap() {
     const connectDB = await import('./config/db.js');
@@ -90,33 +114,36 @@ async function bootstrap() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 🚀 WORKER (HTTP SERVER)
+// 🚀 SINGLE PROCESS: HTTP SERVER + CRON JOBS
 // ─────────────────────────────────────────────────────────────
-async function startWorker() {
+async function startServer() {
     const { default: app } = await import('./app.js');
+    const { registerCronJobs } = await import('./cronJobs.js');
 
     const PORT = process.env.PORT || 5000;
 
+    // 1. Connect to MongoDB and initialize configuration
     await bootstrap();
 
+    // 2. Register cron jobs (only once, perfect in single process)
+    registerCronJobs();
+
+    // 3. Start listening
     const server = app.listen(PORT, () => {
-        console.log(`🚀 Worker ${process.pid} running on port ${PORT}`);
+        console.log(`🚀 Server running on port ${PORT} [PID ${process.pid}]`);
     });
 
     // Graceful shutdown
     const shutdown = async (signal) => {
-        console.log(`\n🚨 Worker ${process.pid} shutting down (${signal})`);
+        console.log(`\n🚨 Shutting down (${signal})`);
 
         try {
             await new Promise((resolve, reject) => {
                 server.close(err => err ? reject(err) : resolve());
             });
-
             await mongoose.connection.close();
-
-            console.log('✅ Worker shutdown complete');
+            console.log('✅ Shutdown complete');
             process.exit(0);
-
         } catch (err) {
             console.error('💥 Shutdown error:', err);
             process.exit(1);
@@ -125,53 +152,6 @@ async function startWorker() {
 
     process.on('SIGTERM', shutdown);
     process.on('SIGINT', shutdown);
-}
-
-// ─────────────────────────────────────────────────────────────
-// 🧠 MASTER (CLUSTER ORCHESTRATOR)
-// ─────────────────────────────────────────────────────────────
-async function startMaster() {
-    const { registerCronJobs } = await import('./cronJobs.js');
-
-    await bootstrap();
-
-    // ✅ ONLY MASTER runs cron
-    registerCronJobs();
-
-    const numCPUs = os.cpus().length;
-
-    console.log(`🔧 Master ${process.pid} starting ${numCPUs} workers`);
-
-    for (let i = 0; i < numCPUs; i++) {
-        cluster.fork();
-    }
-
-    cluster.on('exit', (worker, code, signal) => {
-        console.warn(`⚠️ Worker ${worker.process.pid} died. Restarting...`);
-        cluster.fork();
-    });
-}
-
-// ─────────────────────────────────────────────────────────────
-// 🧭 ENTRYPOINT CONTROL
-// ─────────────────────────────────────────────────────────────
-async function start() {
-    const isProd = process.env.NODE_ENV === 'production';
-
-    if (isProd) {
-        if (cluster.isPrimary) {
-            await startMaster();
-        } else {
-            await startWorker();
-        }
-    } else {
-        // Dev: single process = worker + cron
-        const { registerCronJobs } = await import('./cronJobs.js');
-
-        await bootstrap();
-        registerCronJobs();
-        await startWorker();
-    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -188,21 +168,9 @@ process.on('uncaughtException', (err) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// ▶️ START APP
+// ▶️ ENTRYPOINT
 // ─────────────────────────────────────────────────────────────
-start().catch(err => {
+startServer().catch(err => {
     console.error('❌ Startup failed:', err);
     process.exit(1);
 });
-
-
-/*
-You are still:
-Connecting MongoDB in every worker
-That’s correct for Node cluster, but:
-👉 In very high-scale systems:
-You’d introduce connection pooling strategies or move beyond cluster
-For your level and CV:
-✔️ This is exactly right
-✔️ Don’t overcomplicate it further
-*/

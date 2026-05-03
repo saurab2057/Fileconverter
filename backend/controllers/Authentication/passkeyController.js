@@ -348,6 +348,12 @@ export const startAuthentication = async (req, res) => {
 // WebAuthn assertion. Verifies the signature, updates the
 // replay-attack counter, logs the event, and issues JWT tokens
 // via the shared handleLoginSuccess helper (same as normal login).
+//
+// INTEGRATION NOTE:
+//   handleLoginSuccess has been updated to generate deviceId
+//   server-side using generateDeviceId(req). Therefore, no
+//   deviceId needs to be passed from the frontend or attached here.
+//   This call works seamlessly with the updated authController.
 // ─────────────────────────────────────────────────────────────
 export const verifyAuthentication = async (req, res) => {
   try {
@@ -451,6 +457,7 @@ export const verifyAuthentication = async (req, res) => {
     );
 
     // Issue JWT + refresh cookie — identical to normal password login
+    // handleLoginSuccess now generates deviceId internally, so no extra work needed.
     return handleLoginSuccess(res, user, req);
   } catch (error) {
     console.error('❌ verifyAuthentication Error:', error);

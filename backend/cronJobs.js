@@ -1,6 +1,5 @@
 // --- CRON JOBS ---
 import cron from 'node-cron';
-import cluster from 'cluster';
 import fs from 'fs/promises';
 import path from 'path';
 import User from './models/User.js';
@@ -13,8 +12,17 @@ const BANNED_USER_TTL_DAYS = 30;
 
 /**
  * 🔒 AUTO-DELETE BANNED USERS
- * Runs daily at midnight.
- * Finds users banned 30+ days ago and permanently deletes all their data.
+ *
+ * Runs daily at midnight (UTC).
+ * Finds users that were banned exactly BANNED_USER_TTL_DAYS ago (or longer)
+ * and permanently deletes all their data:
+ *   - Sessions
+ *   - Local uploaded/output files from disk
+ *   - FileHistory records
+ *   - UserMetadata (for GDPR compliance)
+ *   - The user document itself
+ *
+ * Each deletion is logged via the audit logger as an automated system action.
  */
 const autoDeleteBannedUsers = async () => {
     console.log('🕐 [CRON] Running auto-delete for expired banned users...');
@@ -40,22 +48,19 @@ const autoDeleteBannedUsers = async () => {
             try {
                 const userId = user._id.toString();
 
-                // 1. Delete all active sessions
+                // 1. Delete all active sessions for this user
                 await Session.deleteMany({ user: user._id });
 
-                // 2. Fetch and delete local files from disk
+                // 2. Delete any local files associated with the user
                 const fileRecords = await FileHistory.find({ userId: user._id }).select('filePath outputPath');
                 for (const record of fileRecords) {
-                    // Delete input file if exists
                     if (record.filePath) {
                         try {
                             await fs.unlink(path.resolve(record.filePath));
                         } catch (e) {
-                            // File may already be gone — not a fatal error
                             console.warn(`⚠️ [CRON] Could not delete file ${record.filePath}:`, e.message);
                         }
                     }
-                    // Delete output file if exists
                     if (record.outputPath) {
                         try {
                             await fs.unlink(path.resolve(record.outputPath));
@@ -65,18 +70,18 @@ const autoDeleteBannedUsers = async () => {
                     }
                 }
 
-                // 3. Delete FileHistory records
+                // 3. Remove FileHistory records from database
                 await FileHistory.deleteMany({ userId: user._id });
 
-                // 4. Delete UserMetadata (GDPR Art.17 — right to erasure)
+                // 4. Remove UserMetadata (GDPR right to erasure)
                 await UserMetadata.deleteMany({ user: user._id });
 
-                // 5. Delete the user document
+                // 5. Finally delete the user document itself
                 await User.findByIdAndDelete(user._id);
 
-                // 6. Audit log the auto-deletion
+                // 6. Audit the automated deletion
                 await logAdminAction(
-                    null,           // ✅ No human actor — automated system action
+                    null,           // no human actor – automated system
                     'USER_DELETED',
                     `User:${userId}`,
                     {
@@ -88,13 +93,13 @@ const autoDeleteBannedUsers = async () => {
                     },
                     'system',
                     'cron-job',
-                    'system'        // ✅ source = 'system' so audit log is clearly automated
+                    'system'        // source = 'system' to distinguish from manual admin actions
                 );
 
                 console.log(`✅ [CRON] Deleted banned user: ${user.email} (${userId})`);
 
             } catch (userError) {
-                // Don't let one failure stop the rest
+                // Don't let one user's deletion failure stop the rest
                 console.error(`🚨 [CRON] Failed to delete user ${user._id}:`, userError.message);
             }
         }
@@ -108,19 +113,38 @@ const autoDeleteBannedUsers = async () => {
 
 /**
  * 🔒 REGISTER ALL CRON JOBS
- * Call this once at app startup, after DB is connected.
- * 
- * ⚠️ CLUSTER GUARD: In production with clustering, cron jobs must only
- * run on the MASTER process — not on every worker. Without this guard,
- * auto-delete would fire N times (once per CPU core).
+ *
+ * Call this once after the database connection is established.
+ *
+ * ‼️ IMPORTANT – SINGLE PROCESS MODE
+ * ===================================
+ * This version is designed for a single‑process deployment
+ * (e.g. Raspberry Pi, Render free tier, or any non‑clustered environment).
+ *
+ * ✅ No cluster guard is used.
+ * ✅ The cron job will be registered exactly once.
+ * ✅ Perfectly safe when only one Node.js process runs this file.
+ *
+ * ⚠️ IF YOU LATER ADD CLUSTERING (multi‑process)
+ * ================================================
+ * When using Node.js's `cluster` module, **every worker process**
+ * imports this file and would call `registerCronJobs()`.
+ * That would:
+ *   1. Register the cron job multiple times (one per worker)
+ *   2. Cause the auto‑delete to fire N times simultaneously
+ *   3. Create race conditions and duplicate audit logs
+ *
+ * To fix that, import `cluster` from 'node:cluster' and wrap
+ * the registration like this:
+ *
+ *   if (cluster.isWorker) {
+ *       console.log(`⏭️ Skipping cron registration on worker ${process.pid}`);
+ *       return;
+ *   }
+ *
+ * That ensures only the master process (primary) runs the cron.
  */
 export const registerCronJobs = () => {
-    // In cluster mode, only the master process runs cron jobs
-    if (cluster.isWorker) {
-        console.log(`⏭️ [CRON] Skipping cron registration on worker ${process.pid}`);
-        return;
-    }
-
     // Runs every day at midnight UTC
     cron.schedule('0 0 * * *', autoDeleteBannedUsers, {
         timezone: 'UTC'

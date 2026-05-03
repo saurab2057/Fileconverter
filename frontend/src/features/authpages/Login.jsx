@@ -11,7 +11,6 @@ import { loginSchema } from '@/utils/validationSchemas';
 import { authService } from '@/services/authService';
 import { RECAPTCHA_SITE_KEY } from '@/lib/constants';
 import { useToast } from '@/context/ToastContext';
-import { getDeviceId } from '@/utils/deviceFingerprint';
 
 import LoadingAnimation from '@/components/ui/LoadingAnimation';
 
@@ -41,13 +40,11 @@ const LoginForm = () => {
     setIsSubmitting(true);
     try {
       const token = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'login' });
-      const deviceId = getDeviceId();
 
       const response = await authService.login({
         email: data.email,
         password: data.password,
         recaptchaToken: token,
-        deviceId,
       });
 
       login(response.accessToken, response.user);
@@ -71,10 +68,8 @@ const LoginForm = () => {
   const handleGoogleLoginSuccess = async (tokenResponse) => {
     setIsSubmitting(true);
     try {
-      const deviceId = getDeviceId();
       const response = await authService.googleAuth({
         access_token: tokenResponse.access_token,
-        deviceId,
       });
 
       login(response.accessToken, response.user);

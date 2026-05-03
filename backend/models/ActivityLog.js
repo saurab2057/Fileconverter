@@ -23,13 +23,14 @@ const activityLogSchema = new mongoose.Schema({
  
       // ── Session ───────────────────────────────────────────
       'SESSION_REVOKED',
+      'TOKEN_REFRESHED',                // ✅ Added – token rotation event
  
       // ── Passkey ───────────────────────────────────────────
-      'PASSKEY_REGISTERED',     // User added a new passkey from Security tab
-      'PASSKEY_LOGIN',          // User logged in using a passkey
-      'PASSKEY_LOGIN_FAILED',   // Failed passkey verification attempt (wrong device, cloned key etc.)
-      'PASSKEY_DELETED',        // User deleted one of their passkeys
-      'PASSKEY_RENAMED',        // User renamed a passkey label
+      'PASSKEY_REGISTERED',
+      'PASSKEY_LOGIN',
+      'PASSKEY_LOGIN_FAILED',
+      'PASSKEY_DELETED',
+      'PASSKEY_RENAMED',
     ],
     index: true
   },

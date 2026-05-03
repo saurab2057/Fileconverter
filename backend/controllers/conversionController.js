@@ -48,7 +48,14 @@ export const batchConvert = async (req, res) => {
         }
     }
 
-    const settingsArray = req.body.settings ? JSON.parse(req.body.settings) : [];
+    let settingsArray = [];
+    if (req.body.settings) {
+        try {
+            settingsArray = JSON.parse(req.body.settings);
+        } catch (_) {
+            return res.status(400).json({ message: 'Invalid settings JSON format.' });
+        }
+    }
     const settingsMap = new Map(settingsArray.map(s => [s.originalName, s.settings]));
 
     const conversionPromises = req.files.map(async (file) => {
@@ -81,7 +88,7 @@ export const batchConvert = async (req, res) => {
                 // ─────────────────────────────────────────────────────
                 console.log("Using VIDEO conversion recipe...");
 
-                conversionTask.engine      = "ffmpeg";
+                conversionTask.engine = "ffmpeg";
                 conversionTask.video_codec = "x264";
 
                 if (fileSettings.removeAudio) {
@@ -95,14 +102,14 @@ export const batchConvert = async (req, res) => {
 
                 if (fileSettings.resolution && fileSettings.resolution !== "original") {
                     const [w, h] = fileSettings.resolution.split("x");
-                    conversionTask.width  = parseInt(w);
+                    conversionTask.width = parseInt(w);
                     conversionTask.height = parseInt(h);
                 }
 
                 // ✅ FIX #5: Trim was in old code but missing from new — restored
                 if (fileSettings.trimStart && fileSettings.trimEnd) {
                     conversionTask.video_start_time = fileSettings.trimStart;
-                    conversionTask.video_end_time   = fileSettings.trimEnd;
+                    conversionTask.video_end_time = fileSettings.trimEnd;
                 }
             }
 
@@ -153,7 +160,7 @@ export const batchConvert = async (req, res) => {
                 // ✅ FIX #5: Trim audio — was missing entirely
                 if (fileSettings.trimStart && fileSettings.trimEnd) {
                     conversionTask.audio_start_time = fileSettings.trimStart;
-                    conversionTask.audio_end_time   = fileSettings.trimEnd;
+                    conversionTask.audio_end_time = fileSettings.trimEnd;
                 }
             }
 
@@ -194,14 +201,24 @@ export const batchConvert = async (req, res) => {
                 // ─────────────────────────────────────────────────────
                 console.log("Using VIDEO → GIF recipe...");
 
-                conversionTask.engine      = "ffmpeg";
+                conversionTask.engine = "ffmpeg";
                 conversionTask.video_codec = "gif";
 
                 // ✅ FIX #8: Trim was in the settings panel but never applied
                 if (fileSettings.trimStart && fileSettings.trimEnd) {
                     conversionTask.video_start_time = fileSettings.trimStart;
-                    conversionTask.video_end_time   = fileSettings.trimEnd;
+                    conversionTask.video_end_time = fileSettings.trimEnd;
                 }
+            }
+
+            else if (fromFormat === "pdf" && toFormat === "jpg") {
+                // ─────────────────────────────────────────────────────
+                // PDF → JPG (Poppler)
+                // ─────────────────────────────────────────────────────
+                console.log("Using PDF → JPG recipe (poppler)...");
+
+                conversionTask.engine = "poppler";
+                conversionTask.pages = "1";
             }
 
             else if (["png", "jpg", "webp", "svg"].includes(toFormat)) {
@@ -217,16 +234,6 @@ export const batchConvert = async (req, res) => {
                 }
             }
 
-            else if (fromFormat === "pdf" && toFormat === "jpg") {
-                // ─────────────────────────────────────────────────────
-                // PDF → JPG (Poppler)
-                // ─────────────────────────────────────────────────────
-                console.log("Using PDF → JPG recipe (poppler)...");
-
-                conversionTask.engine = "poppler";
-                conversionTask.pages  = "1";
-            }
-
             else {
                 throw new Error(`Unsupported conversion: ${fromFormat} → ${toFormat}`);
             }
@@ -239,9 +246,9 @@ export const batchConvert = async (req, res) => {
             job = await cloudConvert.jobs.create({
                 tag: `${fromFormat}-to-${toFormat}`,
                 tasks: {
-                    "import-1":  { operation: "import/upload" },
+                    "import-1": { operation: "import/upload" },
                     "convert-1": conversionTask,
-                    "export-1":  { operation: "export/url", input: "convert-1" }
+                    "export-1": { operation: "export/url", input: "convert-1" }
                 }
             });
 
@@ -259,7 +266,7 @@ export const batchConvert = async (req, res) => {
                 throw new Error("Conversion did not produce output file.");
             }
 
-            const outputFile  = exportTask.result.files[0];
+            const outputFile = exportTask.result.files[0];
             const downloadUrl = outputFile.url;
 
             if (!downloadUrl.startsWith("https://")) {
@@ -269,9 +276,9 @@ export const batchConvert = async (req, res) => {
             // Save to history
             try {
                 const historyRecord = new FileHistory({
-                    userId:      req.user.id,
-                    filename:    outputFile.filename,
-                    format:      toFormat,
+                    userId: req.user.id,
+                    filename: outputFile.filename,
+                    format: toFormat,
                     sizeInBytes: outputFile.size
                 });
                 await historyRecord.save();
@@ -287,7 +294,7 @@ export const batchConvert = async (req, res) => {
 
             return {
                 originalName: file.originalname,
-                success:      true,
+                success: true,
                 downloadUrl
             };
 
@@ -295,8 +302,8 @@ export const batchConvert = async (req, res) => {
             console.error(`[CloudConvert] Error converting ${safeOriginalName}:`, error);
             return {
                 originalName: file.originalname,
-                success:      false,
-                message:      "Conversion failed. Please check your file and try again."
+                success: false,
+                message: "Conversion failed. Please check your file and try again."
             };
         }
     });
