@@ -13,11 +13,11 @@ const FileUploader = ({
   const [dragActive, setDragActive] = useState(false);
 
   const uploadSources = [
-    { id: 'device',      name: 'From Device',       icon: Folder,   color: 'text-white' },
-    { id: 'dropbox',     name: 'From Dropbox',       icon: Database, color: 'text-white' },
-    { id: 'googledrive', name: 'From Google Drive',  icon: HardDrive,color: 'text-white' },
-    { id: 'onedrive',    name: 'From OneDrive',      icon: Cloud,    color: 'text-white' },
-    { id: 'url',         name: 'From URL',           icon: Link,     color: 'text-white' },
+    { id: 'device', name: 'From Device', icon: Folder, color: 'text-white' },
+    { id: 'dropbox', name: 'From Dropbox', icon: Database, color: 'text-white' },
+    { id: 'googledrive', name: 'From Google Drive', icon: HardDrive, color: 'text-white' },
+    { id: 'onedrive', name: 'From OneDrive', icon: Cloud, color: 'text-white' },
+    { id: 'url', name: 'From URL', icon: Link, color: 'text-white' },
   ];
 
   const handleDrag = (e) => {
@@ -82,11 +82,10 @@ const FileUploader = ({
       {/* Main Upload Area */}
       <div className="relative">
         <div
-          className={`bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-2xl border-2 border-dashed transition-all duration-300 min-h-[400px] p-12 ${
-            dragActive
-              ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20 scale-105'
-              : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:scale-102'
-          }`}
+          className={`bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-2xl border-2 border-dashed transition-all duration-300 min-h-[400px] p-12 ${dragActive
+            ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20 scale-105'
+            : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:scale-102'
+            }`}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
           onDragOver={handleDrag}
@@ -122,9 +121,8 @@ const FileUploader = ({
                     <button
                       key={source.id}
                       onClick={() => handleSourceSelect(source.id)}
-                      className={`w-full flex items-center space-x-3 px-6 py-4 text-left hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors duration-200 text-white ${
-                        index < uploadSources.length - 1 ? 'border-b border-blue-500 dark:border-blue-400' : ''
-                      }`}
+                      className={`w-full flex items-center space-x-3 px-6 py-4 text-left hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors duration-200 text-white ${index < uploadSources.length - 1 ? 'border-b border-blue-500 dark:border-blue-400' : ''
+                        }`}
                     >
                       <source.icon className={`w-5 h-5 ${source.color}`} />
                       <span className="font-medium">{source.name}</span>
@@ -142,16 +140,13 @@ const FileUploader = ({
             </div>
 
             {/* File size & terms */}
-            <div className="space-y-2">
-              <p className="text-gray-500 dark:text-gray-400 transition-colors duration-300">
-                Max file size {maxFileSize}.{' '}
-                <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">Sign Up</a> for more
-              </p>
-              <p className="text-sm text-gray-400 dark:text-gray-500 transition-colors duration-300">
-                By proceeding, you agree to our{' '}
-                <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">Terms of Use</a>.
-              </p>
-            </div>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              Total size of single file or multiple files combined must be under{' '}
+              <span className="text-blue-600 dark:text-blue-400 font-medium">100 MB</span>.
+            </p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              Only <span className="text-blue-600 dark:text-blue-400 font-medium">5 files</span> are allowed at a time.
+            </p>
           </div>
         </div>
       </div>

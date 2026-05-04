@@ -44,7 +44,7 @@ const CompressorPage = ({ acceptedFormats, title, description, settingsComponent
         }
       });
     }
-  }, [location.state, addFiles, updateFileSettings, files.length]);
+  }, []);
 
   const startCompression = async () => {
     setIsProcessing(true);
@@ -61,8 +61,12 @@ const CompressorPage = ({ acceptedFormats, title, description, settingsComponent
             downloadUrl: result.downloadUrl || null,
             errorMessage: result.message || null,
           });
+          if (!result.success) {
+            toast.error(`❌ ${file.name}: ${result.message}`, 6000);
+          }
         } else {
           updateFileStatus(file.id, 'error', { errorMessage: 'No result from server.' });
+          toast.error(`❌ ${file.name}: No result from server.`, 6000);
         }
       });
       setProcessingComplete(true);
@@ -118,7 +122,7 @@ const CompressorPage = ({ acceptedFormats, title, description, settingsComponent
         <FileUploader
           acceptedFormats={acceptedFormats}
           title="Add More Files"
-          subtitle={`Drop your ${acceptedFormats.map(f => f.toUpperCase()).join(', ')} files here (Max ${maxAllowedFiles} files)`}
+          subtitle={`Drop your ${acceptedFormats.map(f => f.toUpperCase()).join(', ')} files here`}
           maxFileSize="100MB"
           onFilesSelected={addFiles}
           className="mb-8"

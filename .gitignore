@@ -78,6 +78,7 @@ build/
 out/
 .next/
 .nuxt/
+frontend/stats.html
 
 # Development
 .vscode/

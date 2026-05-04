@@ -44,7 +44,7 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
         }
       });
     }
-  }, [location.state, addFiles, updateFileSettings, files.length]);
+  }, []);
 
   const startConversion = async () => {
     setIsProcessing(true);
@@ -61,8 +61,13 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
             downloadUrl: result.downloadUrl || null,
             errorMessage: result.message || null,
           });
+          // 🔔 Show toast for each failed file
+          if (!result.success) {
+            toast.error(`❌ ${file.name}: ${result.message}`, 6000);
+          }
         } else {
           updateFileStatus(file.id, 'error', { errorMessage: 'No result from server.' });
+          toast.error(`❌ ${file.name}: No result from server.`, 6000);
         }
       });
       setProcessingComplete(true);
@@ -116,8 +121,8 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
 
         <FileUploader
           acceptedFormats={[fromFormat]}
-          title="Add More Files"
-          subtitle={`Drop your ${fromFormat.toUpperCase()} files here (Max ${maxAllowedFiles} files)`}
+          title=" Choose Files"
+          subtitle={`Drop your ${fromFormat.toUpperCase()} files here`}
           maxFileSize="100MB"
           onFilesSelected={addFiles}
           className="mb-8"

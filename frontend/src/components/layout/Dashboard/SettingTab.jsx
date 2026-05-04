@@ -178,7 +178,7 @@ const SettingsTab = () => {
             {/* Profile image or fallback initial */}
             {(picPreview || user?.profilePictureUrl) ? (
               <img
-                src={picPreview || user?.profilePictureUrl}
+                src={picPreview ? picPreview : user?.profilePictureUrl?.replace('/upload/', '/upload/w_80,h_80,c_fill/')}
                 alt="Profile"
                 referrerPolicy={isGoogleUrl(picPreview || user?.profilePictureUrl) ? 'no-referrer' : 'strict-origin-when-cross-origin'}
                 onError={(e) => {

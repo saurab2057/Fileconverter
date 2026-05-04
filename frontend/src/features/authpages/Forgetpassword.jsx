@@ -1,5 +1,5 @@
 // src/features/authpages/Forgetpassword.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Mail } from 'lucide-react';
@@ -12,6 +12,17 @@ const ForgotPasswordPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const toast = useToast();
+
+  // 🔽 Add this block
+  useEffect(() => {
+    if (!document.querySelector('script[src*="recaptcha/api.js"]')) {
+      const script = document.createElement('script');
+      script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+      script.async = true;
+      script.defer = true;
+      document.body.appendChild(script);
+    }
+  }, []);
 
   const {
     register,
@@ -54,9 +65,8 @@ const ForgotPasswordPage = () => {
               <input
                 type="email"
                 placeholder="Your registered email"
-                className={`block w-full pl-11 pr-4 py-3 bg-white/10 border rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${
-                  errors.email ? 'border-red-400' : 'border-white/10'
-                }`}
+                className={`block w-full pl-11 pr-4 py-3 bg-white/10 border rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${errors.email ? 'border-red-400' : 'border-white/10'
+                  }`}
                 {...register('email')}
               />
             </div>

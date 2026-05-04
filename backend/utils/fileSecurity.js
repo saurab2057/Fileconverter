@@ -94,58 +94,66 @@ export const sanitizeFilename = (filename) => {
 // version for JPEG/PNG. Controllers always read file.buffer and
 // receive clean data — no changes required in controllers.
 // ─────────────────────────────────────────────────────────────
+// Add this helper right before validateFileSecurity (or inside it)
+const userFriendlyReason = (technicalReason) => {
+    if (!technicalReason) return 'File blocked for security reasons.';
+    
+    if (technicalReason.startsWith('PDF contains dangerous element:'))
+        return 'This PDF contains scripts or actions that aren’t allowed. Please remove them and try again.';
+    if (technicalReason.includes('ZIP structure') || technicalReason.includes('Embedded valid'))
+        return 'The file appears to contain hidden data and can’t be processed.';
+    if (technicalReason.includes('Polyglot:') || technicalReason.includes('Embedded valid'))
+        return 'The file appears to contain embedded data and can’t be processed.';
+    if (technicalReason.includes('bytes of data found after EOF'))
+        return 'The file contains unexpected extra data and was blocked for security.';
+    if (technicalReason.startsWith('Suspicious entropy'))
+        return 'File blocked for security reasons – the content seems suspicious. Try a different file.';
+    
+    // fallback: keep the message but strip filenames (already sanitized outside)
+    return 'File blocked for security reasons. Please check the file and try again.';
+};
+
 export const validateFileSecurity = async (file, userId) => {
-    // Sanitize filename once here — used in all error messages and
-    // log lines below so user-controlled characters cannot inject
-    // content into responses or structured logs.
     const safeName = sanitizeFilename(file.originalname);
 
     try {
-        // ── STEP 1: Detect actual MIME type from magic bytes ──────
         const type = await fileTypeFromBuffer(file.buffer);
 
         if (!type) {
             console.warn(`[SECURITY BLOCK] Undetectable file type: "${safeName}" (user ${userId})`);
-            return { message: `Could not verify file type for "${safeName}". Upload blocked for security.` };
+            return { message: `Cannot verify the file type. It may be corrupted or unsupported.` };
         }
 
-        // ── STEP 2: Block if MIME is not whitelisted ──────────────
         if (!ALLOWED_MIME_TYPES.has(type.mime)) {
             console.warn(`[SECURITY BLOCK] Invalid MIME ${type.mime} for "${safeName}" (user ${userId})`);
-            return { message: `File "${safeName}" contains invalid content. Only media and PDF files are allowed.` };
+            return { message: `This file type is not supported. Please upload a media or PDF file.` };
         }
 
-        // ── STEP 3: Block if extension does not match MIME ────────
         const ext = file.originalname.split('.').pop()?.toLowerCase();
 
         if (!ext) {
             console.warn(`[SECURITY BLOCK] No extension: "${safeName}" (user ${userId})`);
-            return { message: `File "${safeName}" has no extension. Please upload a file with a valid extension.` };
+            return { message: `File has no extension. Please upload a file with a valid extension.` };
         }
 
         const allowedExts = MIME_TO_EXTS[type.mime] || [];
         if (!allowedExts.includes(ext)) {
             console.warn(`[SECURITY BLOCK] Extension mismatch: "${safeName}" ext=.${ext} mime=${type.mime} (user ${userId})`);
-            return { message: `File extension does not match content type for "${safeName}".` };
+            return { message: `The file extension doesn’t match its actual content. Please rename the file correctly.` };
         }
 
-        // ── STEP 4: Steganography & hidden payload checks ─────────
         const stegResult = runStegChecks(file, type.mime);
 
         if (!stegResult.clean) {
             console.warn(`[SECURITY BLOCK] Steg check failed: "${safeName}" — ${stegResult.reason} (user ${userId})`);
-            return { message: `File "${safeName}" was blocked: ${stegResult.reason}` };
+            return { message: userFriendlyReason(stegResult.reason) };
         }
 
-        // Replace buffer with cleaned version (EXIF/metadata stripped
-        // for JPEG and PNG). For all other types strippedBuffer === the
-        // original buffer — no extra memory cost.
         file.buffer = stegResult.strippedBuffer;
-
-        return null; // ✅ File is valid and clean
+        return null;
 
     } catch (err) {
         console.error(`[VALIDATION ERROR] "${safeName}":`, err);
-        return { message: `Security validation failed for "${safeName}".` };
+        return { message: `Security validation failed. Please try again.` };
     }
 };

@@ -1,7 +1,10 @@
+// controllers/historyController.js
 import FileHistory from '../models/FileHistory.js';
+import User from '../models/User.js';
 
 // ─────────────────────────────────────────────────────────
 // GET /api/history?page=1&limit=5
+// Only returns files whose IDs are in the user's fileHistory array
 // ─────────────────────────────────────────────────────────
 export const getUserHistory = async (req, res) => {
   try {
@@ -10,10 +13,19 @@ export const getUserHistory = async (req, res) => {
     const skip  = (page - 1) * limit;
     const userId = req.user._id;
 
+    // 1. Get the user's visible history list (references)
+    const user = await User.findById(userId).select('fileHistory').lean();
+    const visibleIds = user?.fileHistory || [];
+
+    // 2. Only return documents whose _id is in that array
+    const filter = {
+      userId,
+      _id: { $in: visibleIds }
+    };
+
     const [total, history] = await Promise.all([
-      FileHistory.countDocuments({ userId }),
-      FileHistory
-        .find({ userId })
+      FileHistory.countDocuments(filter),
+      FileHistory.find(filter)
         .sort({ processedAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -29,37 +41,44 @@ export const getUserHistory = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────
 // GET /api/history/stats
-// Runs 3 aggregations in parallel — real data, no dummies
+// Aggregates only files referenced in the user's fileHistory array
 // ─────────────────────────────────────────────────────────
 export const getDashboardStats = async (req, res) => {
   try {
     const userId = req.user._id;
+
+    // Load user's visible history references
+    const user = await User.findById(userId).select('fileHistory').lean();
+    const visibleIds = user?.fileHistory || [];
+
+    // Build a base match stage that only looks at those documents
+    const matchStage = {
+      userId,
+      _id: { $in: visibleIds }
+    };
 
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
     const [totals, topFormatResult, weeklyRaw] = await Promise.all([
-
       // Total files + total storage saved
       FileHistory.aggregate([
-        { $match: { userId } },
+        { $match: matchStage },
         { $group: { _id: null, totalFiles: { $sum: 1 }, storageSaved: { $sum: '$sizeInBytes' } } }
       ]),
-
       // Most used output format
       FileHistory.aggregate([
-        { $match: { userId } },
+        { $match: matchStage },
         { $group: { _id: '$format', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 1 }
       ]),
-
       // Daily counts for last 7 days
       FileHistory.aggregate([
-        { $match: { userId, processedAt: { $gte: sevenDaysAgo } } },
+        { $match: { ...matchStage, processedAt: { $gte: sevenDaysAgo } } },
         { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$processedAt' } }, count: { $sum: 1 } } }
-      ]),
+      ])
     ]);
 
     // Fill in 0s for days with no activity

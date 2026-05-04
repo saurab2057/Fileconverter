@@ -121,7 +121,7 @@ const Header = () => {
                   >
                     {user && user.profilePictureUrl ? (
                       <img
-                        src={user.profilePictureUrl}
+                        src={user.profilePictureUrl.replace('/upload/', '/upload/w_80,h_80,c_fill/')}
                         alt="Profile"
                         referrerPolicy="no-referrer"
                         onError={(e) => {

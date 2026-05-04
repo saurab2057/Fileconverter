@@ -121,23 +121,27 @@ export const batchConvert = async (req, res) => {
 
                 conversionTask.engine = "ffmpeg";
 
-                // Always force re-encode to target format
-                // (handles video→audio and audio→audio correctly)
-                conversionTask.audio_codec = toFormat;
+                // ─────────────────────────────────────────────────────
+                // UPDATED: Only set audio_codec for formats that are actual codec names.
+                // WAV is a container – CloudConvert should pick the best PCM codec.
+                // ─────────────────────────────────────────────────────
+                const AUDIO_CODEC_MAP = {
+                    mp3: "mp3",
+                    aac: "aac",
+                    flac: "flac",
+                    // wav omitted on purpose
+                };
+                conversionTask.audio_codec = AUDIO_CODEC_MAP[toFormat] || undefined;
 
                 // ✅ FIX #2: audioRateControl — apply VBR or CBR properly
-                // Old bug: bitrate was always applied regardless of rate control mode
                 if (fileSettings.audioRateControl === "vbr") {
-                    // VBR quality 2 = ~190kbps average, good default
                     conversionTask.audio_qscale = 2;
                 } else if (fileSettings.audioRateControl === "cbr" && fileSettings.bitrate) {
                     // ✅ FIX #3: Only apply bitrate when CBR is selected
                     conversionTask.audio_bitrate = parseInt(fileSettings.bitrate) * 1000;
                 }
-                // If neither VBR nor CBR → let CloudConvert use its default
 
                 // ✅ FIX #4: Guard against 'auto' — parseInt('auto') = NaN
-                // Only send sample rate when it's an actual number string
                 if (
                     fileSettings.audioSampleRate &&
                     fileSettings.audioSampleRate !== "auto" &&
@@ -167,26 +171,21 @@ export const batchConvert = async (req, res) => {
             else if (fromFormat === "png" && toFormat === "svg") {
                 // ─────────────────────────────────────────────────────
                 // PNG → SVG (Vectorization via Potrace)
-                // IMPORTANT: Potrace only accepts specific params.
-                // Unsupported params cause 422 errors.
                 // ─────────────────────────────────────────────────────
                 console.log("Using PNG → SVG (Potrace) recipe...");
 
                 conversionTask.engine = "potrace";
 
-                // ✅ FIX #6: colormode was missing — potrace uses British spelling
                 if (fileSettings.colorMode) {
                     conversionTask.colormode = fileSettings.colorMode; // 'color' | 'grey' | 'black'
                 }
 
-                // threshold only meaningful in black/white mode
                 if (fileSettings.colorMode === "black" && fileSettings.threshold !== undefined) {
                     conversionTask.threshold = parseInt(fileSettings.threshold);
                 }
 
-                // ✅ FIX #7: background was missing
                 if (fileSettings.background) {
-                    conversionTask.background = fileSettings.background; // 'transparent' | '#ffffff' | '#000000'
+                    conversionTask.background = fileSettings.background;
                 }
 
                 if (fileSettings.detail) {
@@ -204,7 +203,6 @@ export const batchConvert = async (req, res) => {
                 conversionTask.engine = "ffmpeg";
                 conversionTask.video_codec = "gif";
 
-                // ✅ FIX #8: Trim was in the settings panel but never applied
                 if (fileSettings.trimStart && fileSettings.trimEnd) {
                     conversionTask.video_start_time = fileSettings.trimStart;
                     conversionTask.video_end_time = fileSettings.trimEnd;
@@ -300,10 +298,32 @@ export const batchConvert = async (req, res) => {
 
         } catch (error) {
             console.error(`[CloudConvert] Error converting ${safeOriginalName}:`, error);
+
+            // ─────────────────────────────────────────────────────────
+            // UPDATED: Extract real CloudConvert error if available
+            // ─────────────────────────────────────────────────────────
+            let message = "Conversion failed. Please check your file and try again.";
+
+            if (job) {
+                try {
+                    const failedJob = await cloudConvert.jobs.get(job.id);
+                    if (failedJob && failedJob.status === 'error') {
+                        const failedTask = failedJob.tasks.find(
+                            t => t.status === 'error' && t.message
+                        );
+                        if (failedTask) {
+                            message = `Conversion failed: ${failedTask.message} (code: ${failedTask.code})`;
+                        }
+                    }
+                } catch (_) {
+                    // ignore – keep default message
+                }
+            }
+
             return {
                 originalName: file.originalname,
                 success: false,
-                message: "Conversion failed. Please check your file and try again."
+                message
             };
         }
     });

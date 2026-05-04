@@ -51,12 +51,13 @@ const footerColumns = [
   },
 ];
 
+// Brand colours for social media icons
 const socialLinks = [
-  { icon: <FacebookIcon />,  label: "Facebook",    href: "#" },
-  { icon: <TwitterIcon />,   label: "Twitter / X", href: "#" },
-  { icon: <InstagramIcon />, label: "Instagram",   href: "#" },
-  { icon: <LinkedInIcon />,  label: "LinkedIn",    href: "#" },
-  { icon: <YoutubeIcon />,   label: "YouTube",     href: "#" },
+  { icon: <FacebookIcon />,  label: "Facebook",    href: "#", color: "#1877F2" },
+  { icon: <TwitterIcon />,   label: "X",           href: "#", color: "#000000" },
+  { icon: <InstagramIcon />, label: "Instagram",   href: "#", color: "#E4405F" },
+  { icon: <LinkedInIcon />,  label: "LinkedIn",    href: "#", color: "#0A66C2" },
+  { icon: <YoutubeIcon />,   label: "YouTube",     href: "#", color: "#FF0000" },
 ];
 
 const legalLinks = ["About Us", "Donate", "Privacy", "Terms", "Security & Compliance", "Contact", "Status"];
@@ -66,8 +67,7 @@ const Footer = () => {
   return (
     <div className="flex flex-col">
 
-      {/* ── SECTION 1: Gradient green — 4 link columns ───────────
-          Same gradient as the MCQS newsletter/envelope section   */}
+      {/* ── SECTION 1: Gradient green — 4 link columns ─────────── */}
       <div className="bg-[#165246]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-16">
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
@@ -91,8 +91,7 @@ const Footer = () => {
         </div>
       </div>
 
-      {/* ── SECTION 2: Dark green 
-          Social icons, legal links, copyright                    */}
+      {/* ── SECTION 2: Dark green footer ──────────────────────── */}
       <footer className="bg-[#165246] text-white py-8 px-4 sm:px-6 lg:px-10">
         <div className="max-w-7xl mx-auto">
 
@@ -114,14 +113,15 @@ const Footer = () => {
           {/* Social icons + copyright */}
           <div className="flex flex-col items-center gap-6">
 
-            {/* Social icons — same style as MCQS */}
+            {/* Social icons with original brand colours */}
             <div className="flex gap-6 text-xl">
               {socialLinks.map((s) => (
                 <a
                   key={s.label}
                   href={s.href}
                   aria-label={s.label}
-                  className="hover:text-gray-200 transition-colors duration-200"
+                  style={{ color: s.color }}
+                  className="hover:opacity-80 transition-opacity duration-200"
                 >
                   {s.icon}
                 </a>
@@ -130,7 +130,7 @@ const Footer = () => {
 
             {/* Copyright */}
             <p className="text-sm text-gray-300">
-              FileTools © FileTools.com v2.30 · All rights reserved 2025
+              FileTools © FileTools.com · All rights reserved 2026
             </p>
 
           </div>

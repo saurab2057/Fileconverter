@@ -1,5 +1,5 @@
 // src/features/authpages/Signup.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Chrome } from 'lucide-react';
@@ -12,8 +12,6 @@ import { authService } from '@/services/authService';
 import { RECAPTCHA_SITE_KEY } from '@/lib/constants';
 import { useToast } from '@/context/ToastContext';
 
-
-
 const SignUpForm = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -21,6 +19,17 @@ const SignUpForm = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const toast = useToast();
+
+  // 🔽 Add this block
+  useEffect(() => {
+    if (!document.querySelector('script[src*="recaptcha/api.js"]')) {
+      const script = document.createElement('script');
+      script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+      script.async = true;
+      script.defer = true;
+      document.body.appendChild(script);
+    }
+  }, []);
 
   const {
     register,
@@ -37,41 +46,41 @@ const SignUpForm = () => {
     },
   });
 
-const onSubmit = async (data) => {
-  setIsSubmitting(true);
-  try {
-    const token = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'signup' });
-    await authService.signup({
-      name: data.name,
-      email: data.email,
-      password: data.password,
-      confirmPassword: data.confirmPassword,
-      recaptchaToken: token,
-    });
-    toast.success('Account created successfully! Please login.');
-    navigate('/login', { replace: true });
-  } catch (err) {
-    toast.error(err.response?.data?.message || 'Signup failed. Please try again.');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  const onSubmit = async (data) => {
+    setIsSubmitting(true);
+    try {
+      const token = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'signup' });
+      await authService.signup({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        confirmPassword: data.confirmPassword,
+        recaptchaToken: token,
+      });
+      toast.success('Account created successfully! Please login.');
+      navigate('/login', { replace: true });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Signup failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-const handleGoogleLoginSuccess = async (tokenResponse) => {
-  setIsSubmitting(true);
-  try {
-    const response = await authService.googleAuth({
-      access_token: tokenResponse.access_token,
-    });
-    login(response.accessToken, response.user);
-    toast.success('Login successful!');
-    navigate('/', { replace: true });
-  } catch (err) {
-    toast.error(err.response?.data?.message || 'Google authentication failed.');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  const handleGoogleLoginSuccess = async (tokenResponse) => {
+    setIsSubmitting(true);
+    try {
+      const response = await authService.googleAuth({
+        access_token: tokenResponse.access_token,
+      });
+      login(response.accessToken, response.user);
+      toast.success('Login successful!');
+      navigate('/', { replace: true });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Google authentication failed.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const googleLogin = useGoogleLogin({
     onSuccess: handleGoogleLoginSuccess,
@@ -94,9 +103,8 @@ const handleGoogleLoginSuccess = async (tokenResponse) => {
                 <input
                   type="text"
                   placeholder="Enter your name"
-                  className={`block w-full px-4 py-3 bg-white/10 border rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${
-                    errors.name ? 'border-red-400' : 'border-white/10'
-                  }`}
+                  className={`block w-full px-4 py-3 bg-white/10 border rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${errors.name ? 'border-red-400' : 'border-white/10'
+                    }`}
                   {...register('name')}
                 />
                 {errors.name && <p className="text-xs text-red-400 mt-1 ml-1">{errors.name.message}</p>}
@@ -107,9 +115,8 @@ const handleGoogleLoginSuccess = async (tokenResponse) => {
                 <input
                   type="email"
                   placeholder="Enter your email"
-                  className={`block w-full px-4 py-3 bg-white/10 border rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${
-                    errors.email ? 'border-red-400' : 'border-white/10'
-                  }`}
+                  className={`block w-full px-4 py-3 bg-white/10 border rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${errors.email ? 'border-red-400' : 'border-white/10'
+                    }`}
                   {...register('email')}
                 />
                 {errors.email && <p className="text-xs text-red-400 mt-1 ml-1">{errors.email.message}</p>}
@@ -120,9 +127,8 @@ const handleGoogleLoginSuccess = async (tokenResponse) => {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Create a strong password"
-                  className={`block w-full px-4 py-3 bg-white/10 border rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${
-                    errors.password ? 'border-red-400' : 'border-white/10'
-                  }`}
+                  className={`block w-full px-4 py-3 bg-white/10 border rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${errors.password ? 'border-red-400' : 'border-white/10'
+                    }`}
                   {...register('password')}
                 />
                 <button
@@ -144,9 +150,8 @@ const handleGoogleLoginSuccess = async (tokenResponse) => {
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
                   placeholder="Confirm password"
-                  className={`block w-full px-4 py-3 bg-white/10 border rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${
-                    errors.confirmPassword ? 'border-red-400' : 'border-white/10'
-                  }`}
+                  className={`block w-full px-4 py-3 bg-white/10 border rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${errors.confirmPassword ? 'border-red-400' : 'border-white/10'
+                    }`}
                   {...register('confirmPassword')}
                 />
                 <button

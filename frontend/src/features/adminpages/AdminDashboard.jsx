@@ -45,7 +45,7 @@ const MetricsCard = ({ title, value, icon: Icon, color }) => {
         </div>
       </div>
       <div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-1">{value}</h3>
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">{value}</h2>
         <p className="text-sm text-gray-600">{title}</p>
       </div>
     </div>
@@ -73,7 +73,7 @@ const RecentJobs = ({ jobs }) => {
   if (!jobs || jobs.length === 0) {
     return (
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Jobs</h3>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Jobs</h2>
         <p className="text-gray-500 text-center py-4">No recent jobs to display.</p>
       </div>
     );
@@ -81,7 +81,7 @@ const RecentJobs = ({ jobs }) => {
 
   return (
     <div>
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Jobs</h3>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Jobs</h2>
       <div className="space-y-3">
         {jobs.slice(0, 5).map((job) => (
           <div key={job.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:bg-gray-50">
