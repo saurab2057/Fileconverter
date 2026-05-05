@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/AuthContext';
 import FileUploader from '@/components/common/FileUploader';
 import { AnimatedStats } from '@/components/common/AnimatedStats';
 import { AnimatedTestimonials } from '@/components/common/AnimatedReview';
+import { useToast } from '@/context/ToastContext';
 
 // Tool Registry imports
 import { getFormatActions } from '@/lib/toolRegistry';
@@ -24,6 +25,7 @@ const HomePage = () => {
   const { isAuthenticated, authLoading } = useAuth();
   const navigate = useNavigate();
 
+  const toast = useToast();
   const [showAuthModal,   setShowAuthModal]   = useState(false);
   const [showFormatModal, setShowFormatModal] = useState(false);
   const [detectedFormat,  setDetectedFormat]  = useState(null);
@@ -49,7 +51,7 @@ const HomePage = () => {
     const actions = getFormatActions(ext);
 
     if (actions.length === 0) {
-      alert(`No tools available for .${ext} files yet. Please pick a converter from the menu above.`);
+      toast.error("We don't support this file type.");
       return;
     }
 

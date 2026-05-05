@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import apiClient, { session } from '@/lib/api';
 import { authService } from '@/services/authService';
 import LoadingAnimation from '@/components/ui/LoadingAnimation';
+import NotFound from '@/components/common/NotFound';
 
 // ─────────────────────────────────────────────────────────────
 // Constants — module-level is fine for plain strings.
@@ -37,6 +38,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [serviceUnavailable, setServiceUnavailable] = useState(false);
   const navigate = useNavigate();
 
   // ───────────────────────────────────────────────────────────
@@ -238,10 +240,16 @@ export const AuthProvider = ({ children }) => {
         const { accessToken, user: userData } = await authService.refreshToken();
         session.setToken(accessToken);
         setUser(userData);
-      } catch {
-        // No valid refresh token — user is not authenticated.
-        setUser(null);
-        session.clearToken();
+      } catch (error) {
+        const status = error?.response?.status;
+        // Backend down → network error (no response) or 5xx / 0
+        if (!error.response || status >= 500 || status === 0) {
+          setServiceUnavailable(true);
+        } else {
+          // Normal unauthorised – just clear
+          setUser(null);
+          session.clearToken();
+        }
       } finally {
         setAuthLoading(false);
       }
@@ -391,13 +399,19 @@ export const AuthProvider = ({ children }) => {
   // check on first mount. Once resolved (success or failure) it
   // never goes back to true, so the loading screen shows exactly
   // once per page load.
+  if (serviceUnavailable) {
+    return <NotFound errorCode={503} />;
+  }
+
+  if (authLoading) {
+    return (
+      <LoadingAnimation/>
+    );
+  }
+
   return (
     <AuthContext.Provider value={value}>
-      {authLoading ? (
-        <LoadingAnimation text="....." />
-      ) : (
-        children
-      )}
+      {children}
     </AuthContext.Provider>
   );
 };
