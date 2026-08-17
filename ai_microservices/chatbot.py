@@ -1,7 +1,6 @@
 # ai_microservice/chatbot.py
 import re
 from pathlib import Path
-from huggingface_hub import InferenceClient # type: ignore
 from config import client, CHAT_MODEL, MAX_CHAT_TOKENS
 from models import ChatRequest, ChatResponse
 
@@ -9,20 +8,13 @@ from models import ChatRequest, ChatResponse
 CONTEXT_FILE = Path(__file__).parent / "data" / "website_context.txt"
 
 try:
-    # Try to open and read the context file normally
     with open(CONTEXT_FILE, "r", encoding="utf-8") as f:
         WEBSITE_CONTEXT = f.read()
     print(f"✅ Website context loaded ({len(WEBSITE_CONTEXT)} chars)")
-
 except FileNotFoundError:
-    # If the file doesn't exist — don't crash the whole server
-    # Just start with empty context and warn the developer
     print(f"⚠️ WARNING: website_context.txt not found at {CONTEXT_FILE}. Chatbot will have no context.")
     WEBSITE_CONTEXT = "Website information is currently unavailable. Please contact support for assistance."
-
 except Exception as e:
-    # If file exists but has some other problem (wrong encoding, permissions etc.)
-    # Again — don't crash, just warn and continue with empty context
     print(f"⚠️ WARNING: Could not load website context: {e}. Chatbot will have no context.")
     WEBSITE_CONTEXT = "Website information is currently unavailable. Please contact support for assistance."
 
@@ -47,63 +39,52 @@ Remember: If the user asks about anything NOT in the website information above, 
 
 def clean_response(text: str) -> str:
     """Clean up chat response formatting"""
-    # Remove extra newlines
     text = re.sub(r'\n{3,}', '\n\n', text)
-    # Remove leading/trailing whitespace
     text = text.strip()
     return text
 
 async def process_chat(request: ChatRequest) -> ChatResponse:
     """
-    Process chat request using HuggingFace model
-    
-    Args:
-        request: ChatRequest containing user message
-        
-    Returns:
-        ChatResponse with AI reply
-        
-    Raises:
-        Exception: If chat completion fails
+    Process chat request using Hugging Face router (OpenAI‑compatible API)
     """
     try:
-        # Call HuggingFace chat completion WITH system prompt
-        response = client.chat_completion(
+        # Async call to the router
+        response = await client.chat.completions.create(
             model=CHAT_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": request.message}
             ],
             max_tokens=MAX_CHAT_TOKENS,
-            temperature=0.3  # Lower = more focused, less hallucination
+            temperature=0.3
         )
-        
-        # Extract reply
+
         reply = response.choices[0].message.content
-        
-        # Clean response
         cleaned_reply = clean_response(reply)
-        
-        # Count tokens (approximate)
+
+        # Approximate token usage (simple word count)
         tokens_used = len(cleaned_reply.split())
-        
+
         return ChatResponse(
             reply=cleaned_reply,
             model=CHAT_MODEL,
             tokens_used=tokens_used
         )
-        
+
     except Exception as e:
-            error_msg = str(e)
-            print("=== CHAT ERROR DEBUG ===")          # helpful for seeing the real issue
-            print("Error:", error_msg)
-            print("=======================")
-            
-            if "rate limit" in error_msg.lower():
-                raise Exception("API rate limit reached. Try again later.")
-            elif "401" in error_msg or "unauthorized" in error_msg.lower():
-                raise Exception("Authentication failed - check token or provider access")
-            elif "timeout" in error_msg.lower():
-                raise Exception("Request timeout.")
-            else:
-                raise Exception(f"Chat failed: {error_msg[:300]}")
+        error_msg = str(e)
+        print("=== CHAT ERROR DEBUG ===")
+        print("Error:", error_msg)
+        print("=======================")
+
+        # Refined error mapping for router errors
+        if "rate limit" in error_msg.lower() or "429" in error_msg:
+            raise Exception("API rate limit reached. Try again later.")
+        elif "401" in error_msg or "unauthorized" in error_msg.lower():
+            raise Exception("Authentication failed – check HF_TOKEN or provider access.")
+        elif "timeout" in error_msg.lower():
+            raise Exception("Request timeout.")
+        elif "model" in error_msg.lower() and "not found" in error_msg.lower():
+            raise Exception(f"Model '{CHAT_MODEL}' not available – check the identifier.")
+        else:
+            raise Exception(f"Chat failed: {error_msg[:300]}")

@@ -21,21 +21,32 @@ SERVICES OFFERED
    - All compression preserves original resolution/format unless you choose otherwise
 
 3. AI Summarization
-   - Upload a PDF (max 2 MB, first 5 pages extracted) or paste text directly
+   - Two input methods: upload a PDF (max 2 MB, only the first 5 pages are read) OR paste text directly into the summarizer
+   - The input size for text ranges from 50-512 words count
+   - PDF must be text-based; scanned/image-only PDFs are not supported (no OCR)
    - The system generates a concise plain‑text summary
 
 4. Batch Processing
    - Upload up to 5 files at once
    - All files are processed in parallel
    - You receive individual download links for each output
+   - Applies to conversion/compression only — the AI Summarizer processes one PDF or one text input at a time, not batches
 
 ─────────────────────────────────────────────
-SUPPORTED FORMATS (INPUT)
+SUPPORTED FORMATS — FILE CONVERSION & COMPRESSION (INPUT)
 ─────────────────────────────────────────────
 Video:  MP4, MOV, MKV, AVI, WebM, MPEG, 3GPP
 Audio:  MP3, WAV, FLAC, AAC, OGG, M4A
 Image:  PNG, JPEG, GIF, WebP, BMP, TIFF, ICO
-Document: PDF (conversion to JPG or summarization only; SVG input is not allowed)
+Document: PDF (for conversion, only PDF → JPG is supported; SVG input is not allowed)
+
+─────────────────────────────────────────────
+SUPPORTED FORMATS — AI SUMMARIZATION (INPUT)
+─────────────────────────────────────────────
+- PDF (text-based only, max 2 MB, first 5 pages extracted), or
+- Plain pasted text (no file upload required)
+- Other file types (DOCX, images, audio, video) are not accepted for summarization
+- The input size for text ranges from 50-512 words count
 
 ─────────────────────────────────────────────
 OUTPUT FORMATS
@@ -43,29 +54,17 @@ OUTPUT FORMATS
 Video:  MP4, WebM, MKV, MOV, AVI
 Audio:  MP3, WAV, AAC, FLAC
 Image:  PNG, JPG, WebP, SVG (from PNG only), GIF (from video only)
-Document: PDF is only accepted as input, not generated as output
+Document: PDF is only accepted as input for conversion/summarization, never generated as output
+Summarization output: plain text only
 
 ─────────────────────────────────────────────
 FILE SIZE & QUANTITY LIMITS
 ─────────────────────────────────────────────
-- Single file: up to 100 MB (conversion/compression)
-- Batch total: all files combined must not exceed 100 MB
-- AI Summarizer PDF: exactly 2 MB
-- Maximum 5 files per batch request
+- Single file (conversion/compression): up to 100 MB
+- Batch total (conversion/compression): all files combined must not exceed 100 MB, max 5 files per batch
+- AI Summarizer PDF: max 2 MB, first 5 pages only
+- AI Summarizer pasted text: no strict size limit, but very long text may be truncated
 - If you send a larger file or exceed the total limit, the server rejects the upload immediately
-
-─────────────────────────────────────────────
-QUALITY / SETTINGS OPTIONS
-─────────────────────────────────────────────
-- Image compression: quality slider 0‑100 (lower = smaller file)
-- Video compression: high / medium / low (affects CRF value)
-- Audio compression: high (192kbps), medium (128kbps), low (96kbps)
-- Video resolution downscaling: original, 1080p, 720p, 480p, 360p
-- Audio rate control: VBR (variable) or CBR (constant bitrate)
-- Audio sample rate: auto, 8000, 11025, 16000, 22050, 32000, 44100, 48000 Hz
-- Audio channels: mono, stereo, or keep original
-- Trim: set start/end time (video and audio)
-- Remove audio: option to mute video entirely
 
 ─────────────────────────────────────────────
 PRICING & ACCOUNT TIERS
@@ -81,6 +80,7 @@ Premium Tier ($9.99/month)
 - All other features identical
 
 Daily limit resets at midnight UTC. The counter is per user, not per IP.
+Note: the daily conversion limit applies to file conversion/compression only, not to AI Summarization requests.
 
 ─────────────────────────────────────────────
 SECURITY & PRIVACY
@@ -97,30 +97,23 @@ SECURITY & PRIVACY
 ─────────────────────────────────────────────
 COMMON ERRORS & TROUBLESHOOTING
 ─────────────────────────────────────────────
-1. “File extension does not match content type”
+1. "File extension does not match content type"
    → You renamed a file to a different extension. Restore the original extension or convert with a tool that matches the actual file type.
 
-2. “Compression did not produce an output file”
+2. "Compression did not produce an output file"
    → The file might already be as small as possible, or the settings prevented a valid output. Try a milder quality setting.
 
-3. “Total file size exceeds 100 MB”
+3. "Total file size exceeds 100 MB"
    → The combined size of all files in one batch is over 100 MB. Split them into multiple requests.
 
-4. “No extractable text found”
-   → The PDF is likely image‑only (scanned pages). Our summarizer works with text‑based PDFs.
+4. "No extractable text found"
+   → The PDF is likely image‑only (scanned pages). Our summarizer works with text‑based PDFs only.
 
-5. “PDF processing timed out”
+5. "PDF processing timed out"
    → The PDF may be corrupted or too complex. Try a different file.
 
-6. “Invalid settings JSON”
+6. "Invalid settings JSON"
    → The options you selected in the frontend became corrupted. Refresh the page and try again.
-
-─────────────────────────────────────────────
-ADMIN & MONITORING (not visible to end users)
-─────────────────────────────────────────────
-- Admin dashboard for viewing conversion logs, user activity, and blocked security events
-- Automatic daily cleanup of banned accounts (after 30 days)
-- Audit trail of all admin actions
 
 ─────────────────────────────────────────────
 FREQUENTLY ASKED QUESTIONS
@@ -135,10 +128,13 @@ Q: Do you keep a copy of my files?
 A: No. Files are removed from our system 24 hours after processing.
 
 Q: What happens if my conversion fails?
-A: You’ll see a clear error message. It won’t count against your daily limit.
+A: You'll see a clear error message. It won't count against your daily limit.
 
 Q: Is there an API?
 A: Currently we offer web‑based conversion only. An API is planned for the future.
 
 Q: Can I convert a video to GIF?
-A: Yes, you can upload a video and select “GIF” as the output. Trimming is supported.
+A: Yes, you can upload a video and select "GIF" as the output. Trimming is supported.
+
+Q: Can I summarize a Word document or scanned PDF?
+A: No. The AI Summarizer only accepts text-based PDFs or pasted plain text — Word documents and scanned/image-only PDFs are not supported.

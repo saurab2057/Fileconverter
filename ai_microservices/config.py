@@ -1,50 +1,76 @@
 # ai_microservice/config.py
 import os
-from dotenv import load_dotenv # type: ignore
-from huggingface_hub import InferenceClient # type: ignore
-from pathlib import Path
+from dotenv import load_dotenv
+from openai import AsyncOpenAI  # Use AsyncOpenAI for async endpoints
+from google import genai        # Gemini SDK (used for summarization)
 
+# ============================================================
 # Load environment variables
+# ============================================================
+
 load_dotenv()
 
-# HuggingFace Configuration
-HF_TOKEN = os.getenv("HF_TOKEN")
-# ── Add these debug prints ──
-print("=== DEBUG: HF_TOKEN status ===")
-if HF_TOKEN:
-    print("Token is loaded")
-    print(f"Token length: {len(HF_TOKEN)} characters")
-else:
-    print("!!! HF_TOKEN is None or empty !!!")
-    print("Check your .env file or environment variables")
+# ============================================================
+# Hugging Face Token (still used for chat)
+# ============================================================
 
+HF_TOKEN = os.getenv("HF_TOKEN")
 if not HF_TOKEN:
     raise ValueError("HF_TOKEN environment variable is required")
 
-# Add this near your other env loads
+# ============================================================
+# Gemini API Key (used for summarization)
+# ============================================================
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY environment variable is required")
+
+# ============================================================
+# Internal API Authentication
+# ============================================================
+
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
 if not INTERNAL_API_KEY:
     raise ValueError("INTERNAL_API_KEY environment variable is required")
 
+# ============================================================
+# Async OpenAI Client (Hugging Face Router) – used for /chat
+# ============================================================
 
-# Get the absolute path to the model folder
-BASE_DIR = Path(__file__).resolve().parent
-LOCAL_MODEL_PATH = os.path.join(BASE_DIR, "model","Qwen2.5-0.5B-Instruct")
+client = AsyncOpenAI(
+    base_url="https://router.huggingface.co/v1",
+    api_key=HF_TOKEN,
+    timeout=60.0,
+)
 
-# Initialize HuggingFace client
-client = InferenceClient(token=HF_TOKEN, timeout=30)
+# ============================================================
+# Gemini Client – used for /summarize
+# ============================================================
 
-# Model configurations
-CHAT_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"
-SUMMARY_MODEL = "Qwen2.5-0.5B-Instruct"
+gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Model limits
+# ============================================================
+# Model Configuration
+# ============================================================
+
+CHAT_MODEL = "meta-llama/Llama-3.1-8B-Instruct:preferred"
+SUMMARY_MODEL = "gemini-3.1-flash-lite"   # switched from HF router to Gemini free tier
+
+# ============================================================
+# Generation Configuration
+# ============================================================
+
 MAX_CHAT_TOKENS = 256
+MAX_SUMMARY_TOKENS = 512
 
-# Health check info
+# ============================================================
+# Health Check Information
+# ============================================================
+
 SERVICE_INFO = {
     "name": "AI Microservice",
     "version": "2.0",
     "chat_model": CHAT_MODEL,
-    "summary_model": SUMMARY_MODEL
+    "summary_model": SUMMARY_MODEL,
 }

@@ -1,134 +1,102 @@
-# ai_microservices/summarizer.py
-
+# ai_microservice/summarizer.py
 import re
-import torch
-import asyncio
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from config import LOCAL_MODEL_PATH
+from google.genai import types
+from config import gemini_client, SUMMARY_MODEL, MAX_SUMMARY_TOKENS
 from models import SummarizeRequest
 
-# --- Singleton Model Loader ---
-class SummarizerModel:
-    _instance = None
-    _tokenizer = None
-    _lock = asyncio.Lock()
+# ============================================================
+# System Prompt
+# ============================================================
 
-    @classmethod
-    async def get_model(cls):
-        if cls._instance is None:
-            print(f"🚀 Loading Qwen2.5 from: {LOCAL_MODEL_PATH}...")
+SUMMARY_SYSTEM_PROMPT = """
+You are a professional document summarization assistant.
 
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            dtype = torch.float16 if device == "cuda" else torch.float32
+Your task is to summarize the user's document clearly and accurately.
 
-            cls._tokenizer = AutoTokenizer.from_pretrained(
-                LOCAL_MODEL_PATH,
-                trust_remote_code=True
-            )
-            cls._tokenizer.pad_token = cls._tokenizer.eos_token
+Rules:
+1. Only use information present in the provided document.
+2. Do not invent facts or add information that is not present.
+3. Preserve important names, dates, numbers, decisions, and key facts.
+4. Remove unnecessary repetition.
+5. Make the summary significantly shorter than the original text.
+6. Use clear and natural language.
+7. Return only the summary.
+8. Do not say "Here is the summary".
+9. Do not explain your summarization process.
+"""
 
-            # ✅ FIXED: Add low_cpu_mem_usage=False and explicitly move to device
-            cls._instance = AutoModelForCausalLM.from_pretrained(
-                LOCAL_MODEL_PATH,
-                torch_dtype=dtype,
-                device_map=None,              # ✅ Don't use device_map
-                low_cpu_mem_usage=False,      # ✅ Prevent meta device loading
-                trust_remote_code=True
-            )
-            cls._instance = cls._instance.to(device)  # ✅ Explicitly move to device
-            cls._instance.eval()
+# ============================================================
+# Text Cleaning
+# ============================================================
 
-            print(f"✅ Qwen Model loaded successfully on {device}!")
-        return cls._instance
+def clean_summary(text: str) -> str:
+    if not text:
+        return ""
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = text.strip()
 
-    @classmethod
-    def get_tokenizer(cls):
-        if cls._tokenizer is None:
-            cls._tokenizer = AutoTokenizer.from_pretrained(
-                LOCAL_MODEL_PATH,
-                trust_remote_code=True
-            )
-            cls._tokenizer.pad_token = cls._tokenizer.eos_token
-        return cls._tokenizer
+    prefixes = [
+        "Summary:", "summary:",
+        "Here is the summary:", "Here is a summary:",
+    ]
+    for prefix in prefixes:
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip()
+    return text
 
+def count_words(text: str) -> int:
+    return len(text.split())
 
-def clean_text(text: str) -> str:
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
-
+# ============================================================
+# Summarization
+# ============================================================
 
 async def process_summarization(request: SummarizeRequest) -> dict:
-    async with SummarizerModel._lock:
-        try:
-            cleaned_text = clean_text(request.text)
+    """
+    Summarize document text using the Gemini API (google-genai SDK)
+    """
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model=SUMMARY_MODEL,
+            contents=f"Summarize the following document:\n\n{request.text}",
+            config=types.GenerateContentConfig(
+                system_instruction=SUMMARY_SYSTEM_PROMPT,
+                max_output_tokens=MAX_SUMMARY_TOKENS,
+                temperature=0.2,
+            ),
+        )
 
-            word_count = len(cleaned_text.split())
-            if word_count > 500:
-                raise ValueError(
-                    f"Input text exceeds 500 word limit (found {word_count})."
-                )
+        summary = response.text
 
-            model = await SummarizerModel.get_model()
-            tokenizer = SummarizerModel.get_tokenizer()
+        if not summary:
+            raise Exception("Gemini returned an empty summary")
 
-            # Strict instructions to prevent hallucination
-            system_instruction = (
-                "You are a precise summarization tool. "
-                "Your task is to summarize the provided text using ONLY information present in the text. "
-                "DO NOT invent details, names, places, or outcomes. "
-                "DO NOT use outside knowledge. "
-                "Keep the summary factual and concise and short and sweet."
-            )
+        cleaned_summary = clean_summary(summary)
+        if not cleaned_summary:
+            raise Exception("Generated summary was empty after cleaning")
 
-            # Create Qwen chat prompt
-            messages = [
-                {
-                    "role": "system",
-                    "content": system_instruction,
-                },
-                {
-                    "role": "user",
-                    "content": f"Summarize the following text:\n{cleaned_text}"
-                }
-            ]
+        word_count = count_words(cleaned_summary)
 
-            text_input = tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True
-            )
+        return {
+            "summary": cleaned_summary,
+            "word_count": word_count,
+            "model": SUMMARY_MODEL,
+        }
 
-            inputs = tokenizer(text_input, return_tensors="pt")
-            
-            # ✅ FIXED: Move inputs to model's device
-            device = model.device
-            inputs = {k: v.to(device) for k, v in inputs.items()}
+    except Exception as e:
+        error_msg = str(e)
+        print("=== SUMMARIZATION ERROR DEBUG ===")
+        print("Error:", error_msg)
+        print("=================================")
 
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=256,
-                    do_sample=True,
-                    temperature=0.2,
-                    top_p=0.85,
-                    pad_token_id=tokenizer.eos_token_id
-                )
-
-            # ✅ FIXED: Ensure outputs are on CPU before decoding
-            outputs = outputs.cpu()
-            
-            # Decode only generated tokens
-            summary_text = tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1]:],
-                skip_special_tokens=True
-            )
-
-            return {
-                "summary": summary_text.strip(),
-                "word_count": len(summary_text.split()),
-                "model": "qwen2.5-0.5b-instruct-local"
-            }
-
-        except Exception as e:
-            print(f"Inference Error: {e}")
-            raise RuntimeError(f"Qwen model inference failed: {str(e)}")
+        if "401" in error_msg or "403" in error_msg or "unauthorized" in error_msg.lower() or "permission" in error_msg.lower():
+            raise Exception("Gemini authentication failed. Check GEMINI_API_KEY.")
+        elif "429" in error_msg or "rate limit" in error_msg.lower() or "quota" in error_msg.lower():
+            raise Exception("Gemini rate limit or free-tier quota reached. Please try again later.")
+        elif "timeout" in error_msg.lower() or "deadline" in error_msg.lower():
+            raise Exception("Gemini request timed out.")
+        elif "503" in error_msg or "unavailable" in error_msg.lower() or "model" in error_msg.lower():
+            raise Exception("Gemini model is currently unavailable.")
+        else:
+            raise Exception(f"Summarization failed: {error_msg[:300]}")
