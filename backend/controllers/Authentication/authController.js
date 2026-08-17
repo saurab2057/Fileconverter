@@ -133,75 +133,146 @@ export const handleLoginSuccess = async (res, user, req) => {
 //   3. Block suspended users
 //   4. Save metadata + proceed to handleLoginSuccess (deviceId generated inside)
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// GOOGLE AUTH: googleAuth
+//
+// Frontend uses @react-oauth/google -> useGoogleLogin()
+// which gives us an OAuth ACCESS TOKEN, not an ID token.
+//
+// Therefore:
+// ❌ Do NOT use client.verifyIdToken()
+// ✅ Use Google's userinfo endpoint with the access token
+// ─────────────────────────────────────────────────────────────
 export const googleAuth = async (req, res) => {
     const { access_token } = req.body;
 
     if (!access_token) {
-        return res.status(400).json({ message: 'Google access token missing.' });
+        return res.status(400).json({
+            message: 'Google access token missing.'
+        });
     }
 
     try {
-        // 🔒 FIX: Use google-auth-library to verify the ID token
-        // with explicit audience check (prevents token confusion)
-        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+        // ─────────────────────────────────────────────────────
+        // 1. Verify the Google OAuth access token
+        //    by requesting the authenticated user's profile.
+        // ─────────────────────────────────────────────────────
+        const googleResponse = await fetch(
+            'https://www.googleapis.com/oauth2/v3/userinfo',
+            {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${access_token}`,
+                },
+            }
+        );
 
-        // Verify the ID token – this checks:
-        //   1. Token signature is valid
-        //   2. Token is not expired
-        //   3. Token was issued for OUR client ID (audience check)
-        const ticket = await client.verifyIdToken({
-            idToken: access_token,
-            audience: process.env.GOOGLE_CLIENT_ID,  // ← CRITICAL: This prevents token replay from other apps
-        });
+        if (!googleResponse.ok) {
+            console.error(
+                'Google userinfo request failed:',
+                googleResponse.status
+            );
 
-        const payload = ticket.getPayload();
-        
-        if (!payload || !payload.email) {
-            return res.status(401).json({ message: 'Google auth did not return a valid email.' });
+            return res.status(401).json({
+                message: 'Invalid or expired Google authentication.'
+            });
         }
 
-        const { name, email, picture } = payload;
+        const payload = await googleResponse.json();
 
-        // Look up existing user
+        // ─────────────────────────────────────────────────────
+        // 2. Validate Google profile response
+        // ─────────────────────────────────────────────────────
+        if (!payload || !payload.email) {
+            return res.status(401).json({
+                message: 'Google authentication did not return a valid email.'
+            });
+        }
+
+        const {
+            name,
+            email,
+            picture,
+            email_verified,
+            sub: googleId,
+        } = payload;
+
+        // Require Google's email verification
+        if (email_verified !== true) {
+            return res.status(401).json({
+                message: 'Your Google email address is not verified.'
+            });
+        }
+
+        // ─────────────────────────────────────────────────────
+        // 3. Find existing user
+        // ─────────────────────────────────────────────────────
         let user = await User.findOne({ email });
 
+        // ─────────────────────────────────────────────────────
+        // 4. Create new Google user
+        // ─────────────────────────────────────────────────────
         if (!user) {
-            // New user: create with Google provider
             user = new User({
                 name: name || 'Google User',
                 email,
                 authProvider: 'google',
                 profilePictureUrl: picture || null,
             });
+
             await user.save();
-        } else {
-            // Existing user: block if email/password account tries Google OAuth
-            if (user.authProvider === 'email') {
-                return res.status(400).json({
-                    message: 'This email is registered with a password. Please login with your email and password.'
-                });
-            }
-            // Update profile picture if changed
-            if (user.profilePictureUrl !== picture) {
+        }
+
+        // ─────────────────────────────────────────────────────
+        // 5. Existing email/password account
+        // ─────────────────────────────────────────────────────
+        else if (user.authProvider === 'email') {
+            return res.status(400).json({
+                message:
+                    'This email is registered with a password. Please login with your email and password.'
+            });
+        }
+
+        // ─────────────────────────────────────────────────────
+        // 6. Existing Google account
+        //    Update profile picture if Google changed it.
+        // ─────────────────────────────────────────────────────
+        else {
+            if (
+                picture &&
+                user.profilePictureUrl !== picture
+            ) {
                 user.profilePictureUrl = picture;
                 await user.save();
             }
         }
 
-        // Block suspended users
+        // ─────────────────────────────────────────────────────
+        // 7. Block inactive/banned accounts
+        // ─────────────────────────────────────────────────────
         if (user.status !== 'active') {
             return res.status(403).json({
-                message: 'Your account has been banned. Please contact support.'
+                message:
+                    'Your account has been banned. Please contact support.'
             });
         }
 
-        // Save metadata and complete login
+        // ─────────────────────────────────────────────────────
+        // 8. Save login metadata
+        // ─────────────────────────────────────────────────────
         await saveUserMetadata(req, user._id);
+
+        // ─────────────────────────────────────────────────────
+        // 9. Create your normal application session/JWTs
+        // ─────────────────────────────────────────────────────
         return handleLoginSuccess(res, user, req);
 
     } catch (err) {
         console.error('Google Auth Error:', err);
-        return res.status(401).json({ message: 'Google authentication failed.' });
+
+        return res.status(401).json({
+            message: 'Google authentication failed.'
+        });
     }
 };
 
