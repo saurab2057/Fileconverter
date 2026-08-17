@@ -6,12 +6,7 @@ import LoadingAnimation from '@/components/ui/LoadingAnimation';
 
 const ProtectedRoute = ({ children }) => {
   // 🔧 CHANGE 1: Destructure isLoggingOut from useAuth
-  const { user, isAuthenticated, authLoading, isLoggingOut } = useAuth();
-
-  // Show loading state while checking auth
-  if (authLoading) {
-    return <LoadingAnimation />;
-  }
+  const { user, isAuthenticated,  isLoggingOut } = useAuth();
 
   // 🔧 CHANGE 2: Skip redirect if intentionally logging out (prevents /403 or wrong redirects)
   if (isLoggingOut) {

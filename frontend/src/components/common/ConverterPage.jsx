@@ -11,7 +11,7 @@ import { useToast } from '@/context/ToastContext';
 const ConverterPage = ({ fromFormat, toFormat, title, description, settingsComponent: SettingsComponent, defaultSettings }) => {
   const location = useLocation();
   // ✅ FIXED: removed `const navigate = useNavigate()` — was imported but never used
-  const { authLoading, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const toast = useToast();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [editingFileId, setEditingFileId] = useState(null);
@@ -92,15 +92,6 @@ const ConverterPage = ({ fromFormat, toFormat, title, description, settingsCompo
   const fileToEdit = files.find(f => f.id === editingFileId);
   const totalFiles = files.length;
   const completedOrErrorFiles = files.filter(f => f.status === 'completed' || f.status === 'error').length;
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <Loader className="w-12 h-12 text-blue-600 animate-spin" />
-        <p className="ml-4 text-xl text-gray-700 dark:text-gray-300">Verifying session...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">

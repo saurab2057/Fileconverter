@@ -83,16 +83,15 @@ const MobileNav = ({ activeTab, onTabChange }) => (
 
 // ── Dashboard shell ───────────────────────────────────────
 const Dashboard = () => {
-  const { user, isAuthenticated, authLoading } = useAuth();
+  const { user, isAuthenticated} = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('activity');
 
   useEffect(() => {
-    if (authLoading) return;
     if (!isAuthenticated) navigate('/');
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, navigate]);
 
-  if (authLoading || !isAuthenticated || !user) return null;
+  if ( !isAuthenticated || !user) return null;
 
   const renderTab = () => {
     switch (activeTab) {

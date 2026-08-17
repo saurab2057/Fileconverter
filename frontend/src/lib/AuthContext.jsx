@@ -3,7 +3,6 @@ import React, { createContext, useState, useEffect, useContext, useCallback, use
 import { useNavigate } from 'react-router-dom';
 import apiClient, { session } from '@/lib/api';
 import { authService } from '@/services/authService';
-import LoadingAnimation from '@/components/ui/LoadingAnimation';
 import NotFound from '@/components/common/NotFound';
 
 // ─────────────────────────────────────────────────────────────
@@ -34,7 +33,7 @@ export const useAuth = () => {
 // ─────────────────────────────────────────────────────────────
 // AuthProvider Component
 // ─────────────────────────────────────────────────────────────
-export const AuthProvider = ({ children }) => {
+export const AuthProvider = ({ children , loadingFallback = null }) => {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -404,9 +403,7 @@ export const AuthProvider = ({ children }) => {
   }
 
   if (authLoading) {
-    return (
-      <LoadingAnimation/>
-    );
+    return loadingFallback;
   }
 
   return (

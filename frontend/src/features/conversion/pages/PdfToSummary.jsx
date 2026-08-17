@@ -14,7 +14,7 @@ const WORD_LIMIT = 500;
 const PdfToSummary = () => {
   const timerRef = useRef(null);
   // ✅ FIXED: removed `const navigate = useNavigate()` — was imported but never used
-  const { authLoading, isAuthenticated } = useAuth(); // ✅ FIXED: added isAuthenticated for auth gate
+  const { isAuthenticated } = useAuth(); // ✅ FIXED: added isAuthenticated for auth gate
   const [showAuthModal, setShowAuthModal] = useState(false);   // ✅ FIXED: added for auth modal
   const [text, setText] = useState('');
   const [file, setFile] = useState(null);
@@ -137,10 +137,6 @@ const PdfToSummary = () => {
     a.click();
     URL.revokeObjectURL(url);
   };
-
-  if (authLoading) {
-    return <div className="text-center py-12">Verifying session...</div>;
-  }
 
   const isProcessing = status === 'processing';
   const hasInput = text || file;

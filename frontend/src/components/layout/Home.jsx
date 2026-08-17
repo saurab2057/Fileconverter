@@ -22,15 +22,13 @@ const colorMap = {
 };
 
 const HomePage = () => {
-  const { isAuthenticated, authLoading } = useAuth();
+  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   const toast = useToast();
   const [showAuthModal,   setShowAuthModal]   = useState(false);
   const [showFormatModal, setShowFormatModal] = useState(false);
   const [detectedFormat,  setDetectedFormat]  = useState(null);
-
-  if (authLoading) return <div>Loading...</div>;
 
   const testimonials = [
     { name: "Sarah Johnson", role: "Graphic Designer",  content: "FileTools has been a game-changer for my workflow. Converting between different image formats is now effortless and fast.", rating: 5 },

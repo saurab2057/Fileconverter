@@ -5,13 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import LoadingAnimation from '@/components/ui/LoadingAnimation';
 
 const AdminGuard = ({ children }) => {
-  const { user, isAuthenticated, authLoading, isLoggingOut } = useAuth();
-
-  // Show loading state while checking auth
-  if (authLoading) {
-    console.log('AdminRoute: Checking authentication status...');
-    return <LoadingAnimation />;
-  }
+  const { user, isAuthenticated, isLoggingOut } = useAuth();
 
   // ⚠️ CRITICAL: Skip redirect if we're intentionally logging out
   // This prevents the /403 redirect when user state becomes null during logout
