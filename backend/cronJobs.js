@@ -51,35 +51,16 @@ const autoDeleteBannedUsers = async () => {
                 // 1. Delete all active sessions for this user
                 await Session.deleteMany({ user: user._id });
 
-                // 2. Delete any local files associated with the user
-                const fileRecords = await FileHistory.find({ userId: user._id }).select('filePath outputPath');
-                for (const record of fileRecords) {
-                    if (record.filePath) {
-                        try {
-                            await fs.unlink(path.resolve(record.filePath));
-                        } catch (e) {
-                            console.warn(`⚠️ [CRON] Could not delete file ${record.filePath}:`, e.message);
-                        }
-                    }
-                    if (record.outputPath) {
-                        try {
-                            await fs.unlink(path.resolve(record.outputPath));
-                        } catch (e) {
-                            console.warn(`⚠️ [CRON] Could not delete file ${record.outputPath}:`, e.message);
-                        }
-                    }
-                }
-
-                // 3. Remove FileHistory records from database
+                // 2. Remove FileHistory records from database
                 await FileHistory.deleteMany({ userId: user._id });
 
-                // 4. Remove UserMetadata (GDPR right to erasure)
+                // 3. Remove UserMetadata (GDPR right to erasure)
                 await UserMetadata.deleteMany({ user: user._id });
 
-                // 5. Finally delete the user document itself
+                // 4. Finally delete the user document itself
                 await User.findByIdAndDelete(user._id);
 
-                // 6. Audit the automated deletion
+                // 4. Audit the automated deletion
                 await logAdminAction(
                     null,           // no human actor – automated system
                     'USER_DELETED',

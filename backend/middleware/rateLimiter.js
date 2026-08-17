@@ -210,3 +210,38 @@ export const refreshTokenLimiter = rateLimit({
     });
   },
 });
+
+// ─────────────────────────────────────────────────────────────
+// RESET PASSWORD LIMITER
+// ─────────────────────────────────────────────────────────────
+// WHO   : Anyone with a valid reset_session cookie
+// ROUTE : POST /api/auth/reset-password
+// WHY   : Prevents brute-force attempts on password reset.
+//         Even with a valid token, limit attempts to 5 per minute.
+// ─────────────────────────────────────────────────────────────
+export const resetPasswordLimiter = rateLimit({
+    windowMs: 60 * 1000,           // 1 minute window
+    max: 5,                         // 5 attempts per minute
+    skip: () => process.env.NODE_ENV === 'test',
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+        // Use the reset_session cookie value as the key if available
+        // Otherwise fall back to IP
+        const resetSession = req.cookies?.reset_session;
+        if (resetSession) {
+            // Use a hash of the cookie to avoid exposing it in logs
+            return `reset_${resetSession.substring(0, 20)}`;
+        }
+        return req.ip || req.socket?.remoteAddress || 'unknown';
+    },
+    message: {
+        message: 'Too many password reset attempts. Please wait 1 minute before trying again.'
+    },
+    handler: (req, res) => {
+        console.warn(`🚨 [RESET] Excessive reset attempts — IP: ${req.ip}`);
+        return res.status(429).json({
+            message: 'Too many password reset attempts. Please wait 1 minute before trying again.'
+        });
+    },
+});

@@ -111,6 +111,8 @@ export const getUsers = async (req, res) => {
                 $project: {
                     password: 0,
                     refreshToken: 0,
+                    passwordChangedAt: 0,
+                    profilePicturePublicId: 0,
                     metadataEntries: 0,
                     __v: 0
                 }
@@ -231,6 +233,8 @@ export const updateUser = async (req, res) => {
                 $project: {
                     password: 0,
                     refreshToken: 0,
+                    passwordChangedAt: 0,
+                    profilePicturePublicId: 0,
                     metadataEntries: 0,
                     __v: 0
                 }

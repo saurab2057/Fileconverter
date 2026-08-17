@@ -9,10 +9,10 @@ import UserMetadata from '../models/UserMetadata.js';
 // ─────────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────────
-const GEO_TIMEOUT_MS        = 4000;
+const GEO_TIMEOUT_MS = 4000;
 const GEO_FAILURE_THRESHOLD = 3;
-const GEO_COOLDOWN_MS       = 2 * 60 * 1000;
-const GEO_CACHE_TTL_MS      = 10 * 60 * 1000; // 10 minutes
+const GEO_COOLDOWN_MS = 2 * 60 * 1000;
+const GEO_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 // UAParser instance is reused across requests — instantiating per-request
 // is unnecessary overhead since setUA() resets state before each parse.
@@ -88,16 +88,17 @@ const geoCircuit = {
 // Takes the leftmost IP from X-Forwarded-For — that is the original
 // client IP when Express trust proxy is set to 1 in app.js.
 function extractClientIP(req) {
-    const raw = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
-    return raw.split(',')[0].trim();
+    // Use re.ip - Express computes it correctly (trust proxy is set to 1 in app.js)
+    return req.ip || req.socket.remoteAddress || '';
+
 }
 
 function isPrivateIP(ip) {
     return (
-        ip.startsWith('10.')      ||
+        ip.startsWith('10.') ||
         ip.startsWith('192.168.') ||
-        ip.startsWith('172.')     ||
-        ip === '127.0.0.1'        ||
+        ip.startsWith('172.') ||
+        ip === '127.0.0.1' ||
         ip === '::1'
     );
 }
@@ -130,8 +131,8 @@ async function fetchGeoLocation(ip) {
 
         const location = {
             country: res.data.country || '',
-            region:  res.data.region  || '',
-            city:    res.data.city    || '',
+            region: res.data.region || '',
+            city: res.data.city || '',
         };
 
         geoCircuit.recordSuccess();
@@ -148,8 +149,8 @@ async function fetchGeoLocation(ip) {
                 if (retry.data?.success) {
                     const location = {
                         country: retry.data.country || '',
-                        region:  retry.data.region  || '',
-                        city:    retry.data.city    || '',
+                        region: retry.data.region || '',
+                        city: retry.data.city || '',
                     };
                     geoCircuit.recordSuccess();
                     setCachedGeo(ip, location);
@@ -197,9 +198,9 @@ export async function saveUserMetadata(req, userId) {
             ipHash: hashIP(ip),
             location,
             device: {
-                type:    ua.device.type   || 'desktop',
-                browser: ua.browser.name  || '',
-                os:      ua.os.name       || '',
+                type: ua.device.type || 'desktop',
+                browser: ua.browser.name || '',
+                os: ua.os.name || '',
             },
             userAgent,
         };

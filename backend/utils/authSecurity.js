@@ -77,7 +77,7 @@ export const generateJti = () => {
 //   All authorisation still happens via JWT and refresh token rotation.
 // ─────────────────────────────────────────────────────────────
 export const generateDeviceId = (req) => {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const ip = req.ip || req.socket?.remoteAddress || '';
     const userAgent = req.get('user-agent') || '';
     const raw = `${ip}|${userAgent}`;
     return crypto.createHash('sha256').update(raw).digest('hex');

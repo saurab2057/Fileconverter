@@ -5,7 +5,7 @@ import Session from '../../models/Session.js';
 import { saveUserMetadata } from '../../middleware/collectUserMetadata.js';
 import { hashIP, generateJti, generateDeviceId } from '../../utils/authSecurity.js'; // ✅ added generateDeviceId
 import { logUserActivity } from '../../middleware/auditLogger.js';
-
+import { OAuth2Client } from 'google-auth-library';
 
 // ─────────────────────────────────────────────────────────────
 // CORE HELPER: handleLoginSuccess
@@ -62,7 +62,8 @@ export const handleLoginSuccess = async (res, user, req) => {
         );
 
         // Step 3: Collect request metadata and generate deviceId server‑side
-        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+        // Use re.ip - Express computes it correctly (trust proxy is set to 1 in app.js)
+        const ip = req.ip || req.socket.remoteAddress || '';
         const userAgent = req.get('user-agent') || 'unknown';
         const deviceId = generateDeviceId(req);  // ✅ FIX: generated, not from body
 
@@ -140,31 +141,39 @@ export const googleAuth = async (req, res) => {
     }
 
     try {
-        // Verify Google token
-        const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${access_token}` },
+        // 🔒 FIX: Use google-auth-library to verify the ID token
+        // with explicit audience check (prevents token confusion)
+        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+        // Verify the ID token – this checks:
+        //   1. Token signature is valid
+        //   2. Token is not expired
+        //   3. Token was issued for OUR client ID (audience check)
+        const ticket = await client.verifyIdToken({
+            idToken: access_token,
+            audience: process.env.GOOGLE_CLIENT_ID,  // ← CRITICAL: This prevents token replay from other apps
         });
 
-        if (!response.ok) {
-            return res.status(401).json({ message: 'Invalid Google token.' });
-        }
-
-        const data = await response.json();
-        if (!data.email) {
+        const payload = ticket.getPayload();
+        
+        if (!payload || !payload.email) {
             return res.status(401).json({ message: 'Google auth did not return a valid email.' });
         }
 
-        const { name, email, picture } = data;
+        const { name, email, picture } = payload;
 
         // Look up existing user
         let user = await User.findOne({ email });
 
         if (!user) {
             // New user: create with Google provider
-            user = new User({ name, email, authProvider: 'google', profilePictureUrl: picture });
+            user = new User({
+                name: name || 'Google User',
+                email,
+                authProvider: 'google',
+                profilePictureUrl: picture || null,
+            });
             await user.save();
-            // Note: USER_CREATED activity is not logged here for Google signups.
-            // The login activity below will capture the event.
         } else {
             // Existing user: block if email/password account tries Google OAuth
             if (user.authProvider === 'email') {
@@ -181,10 +190,12 @@ export const googleAuth = async (req, res) => {
 
         // Block suspended users
         if (user.status !== 'active') {
-            return res.status(403).json({ message: 'Your account has been banned. Please contact support.' });
+            return res.status(403).json({
+                message: 'Your account has been banned. Please contact support.'
+            });
         }
 
-        // Save metadata and complete login (handleLoginSuccess will generate deviceId)
+        // Save metadata and complete login
         await saveUserMetadata(req, user._id);
         return handleLoginSuccess(res, user, req);
 
@@ -227,7 +238,7 @@ export const signup = async (req, res) => {
         await user.save();
 
         // Log signup activity
-        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+        const ip = req.ip || req.socket.remoteAddress || '';
         await logUserActivity(
             user._id,
             'USER_CREATED',
@@ -253,31 +264,37 @@ export const signup = async (req, res) => {
 // LOGIN: login
 // Authenticates a user with email + password.
 //
-// Flow:
-//   1. Find user by email (select password field)
-//   2. Reject if user not found or has no password (Google account)
-//   3. Compare password with stored hash
-//   4. Block suspended users
-//   5. Save metadata + proceed to handleLoginSuccess
+// 🔒 FIXED: Timing attack protection – both "user exists" and
+// "user doesn't exist" paths now take the same amount of time.
 // ─────────────────────────────────────────────────────────────
 export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
+        // ✅ Pre-compute a fixed bcrypt hash (any valid hash works)
+        // This is used to normalize timing on the "user not found" path
+        const dummyHash = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
         // Fetch user including password field (excluded by default)
         const user = await User.findOne({ email }).select('+password');
 
-        // Reject if no user or password missing (Google-only)
-        if (!user || !user.password) {
+        // 🔒 FIX: Always run bcrypt.compare() – even if user doesn't exist
+        // This ensures both branches take the same ~100ms
+        let isMatch = false;
+        if (user && user.password) {
+            // Real user → compare against their actual password
+            isMatch = await bcrypt.compare(password, user.password);
+        } else {
+            // Non-existent user → compare against a dummy hash
+            // This takes the same time as a real bcrypt compare
+            await bcrypt.compare(password, dummyHash);
+        }
+
+        // Reject if no user, password missing, or password doesn't match
+        if (!user || !user.password || !isMatch) {
             return res.status(401).json({
                 message: 'Invalid credentials or please use your social login provider.'
             });
-        }
-
-        // Verify password
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ message: 'Invalid credentials.' });
         }
 
         // Check account status

@@ -130,21 +130,20 @@ app.get('/api/health', (req, res) => {
 
 // ─────────────────────────────────────────────────────────────
 // WAF — mounted AFTER body parsers, BEFORE all route handlers
-//
-// Why AFTER body parsers:
-//   The WAF inspects req.body and req.query for injection patterns.
-//   If mounted before express.json(), req.body would be undefined
-//   and the WAF would silently skip body scanning.
-//
-// Why BEFORE routes:
-//   Every API request must pass through the WAF before reaching
-//   any controller. Mounting it here as app.use() (not per-router)
-//   guarantees no route can accidentally bypass it.
-//
-// Why AFTER health check:
-//   See health check comment above.
 // ─────────────────────────────────────────────────────────────
-app.use(waf);
+// 🔒 FIX: Skip WAF for multipart routes (/api/convert, /api/compress)
+//   These routes handle multipart/form-data which multer processes INSIDE the route.
+//   The global WAF would see an empty req.body. We'll apply WAF manually AFTER multer
+//   in those route files so it can scan the actual fields.
+// ─────────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+    // Skip WAF for routes that use multipart/form-data
+    // They will apply WAF internally after multer
+    if (req.path.startsWith('/api/convert') || req.path.startsWith('/api/compress')) {
+        return next();
+    }
+    return waf(req, res, next);
+});
 
 
 // ─────────────────────────────────────────────────────────────

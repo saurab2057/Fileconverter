@@ -51,8 +51,7 @@ export const forgotPassword = async (req, res) => {
                        </p>`
             });
 
-            const forwarded = req.headers['x-forwarded-for'];
-            const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress || '';
+            const ip = req.ip || req.socket.remoteAddress || '';
             await logUserActivity(
                 user._id,
                 'PASSWORD_RESET_REQUESTED',
@@ -189,8 +188,7 @@ export const resetPassword = async (req, res) => {
         // Revoke all sessions after password change
         await Session.deleteMany({ user: decoded.userId });
 
-        const forwarded = req.headers['x-forwarded-for'];
-        const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress || '';
+        const ip = req.ip || req.socket.remoteAddress || '';
         await logUserActivity(
             decoded.userId,
             'PASSWORD_RESET_COMPLETED',

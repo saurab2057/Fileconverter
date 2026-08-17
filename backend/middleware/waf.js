@@ -220,7 +220,7 @@ const maskSensitive = (str) => {
 // AUDIT LOG HELPER
 // ─────────────────────────────────────────────────────────────
 const logBlockedRequest = (req, attackType, details) => {
-    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
     const userAgent = req.get('user-agent') || 'unknown';
     const safeDetails = maskSensitive(details);
 

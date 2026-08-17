@@ -38,7 +38,7 @@ export const refreshToken = async (req, res) => {
     try {
         const decoded = jwt.verify(token, refreshTokenSecret);
         const { userId, jti } = decoded;
-        
+
         // Step 1: Validate session exists with this JTI
         const session = await Session.findOne({ user: userId, jti });
 
@@ -85,8 +85,7 @@ export const refreshToken = async (req, res) => {
         );
 
         // Step 6: Update session with new JTI and metadata
-        const forwarded = req.headers['x-forwarded-for'];
-        const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress || '';
+        const ip = req.ip || req.socket.remoteAddress || '';
         const userAgent = req.get('user-agent') || 'unknown';
         await Session.findOneAndUpdate(
             { user: user._id, deviceId },
@@ -212,8 +211,7 @@ export const logoutAllDevices = async (req, res) => {
             path: '/'
         });
 
-        const forwarded = req.headers['x-forwarded-for'];
-        const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress || '';
+        const ip = req.ip || req.socket.remoteAddress || '';
         // ✅ FIX: target is string, details is object
         await logUserActivity(
             userId,
@@ -307,8 +305,7 @@ export const revokeSession = async (req, res) => {
             return res.status(404).json({ message: 'Session not found.' });
         }
 
-        const forwarded = req.headers['x-forwarded-for'];
-        const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress || '';
+        const ip = req.ip || req.socket.remoteAddress || '';
         await logUserActivity(
             userId,
             'SESSION_REVOKED',

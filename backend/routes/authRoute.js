@@ -1,5 +1,5 @@
 import express from 'express';
-import { authLimiter, refreshTokenLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, refreshTokenLimite, resetPasswordLimiter } from '../middleware/rateLimiter.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import {
     signupValidation,
@@ -32,7 +32,7 @@ router.post('/forgot-password', authLimiter, ...forgotPasswordValidation, handle
 
 // 🔒 No reCAPTCHA here — users arrive via email link and won't have a reCAPTCHA widget loaded.
 // This route is already protected by the reset_session httpOnly cookie set in /validate-reset-token.
-router.post('/reset-password', ...newPasswordValidation, handleValidationErrors, resetPassword);
+router.post('/reset-password', resetPasswordLimiter, ...newPasswordValidation, handleValidationErrors, resetPassword);
 
 
 router.post('/validate-reset-token', authLimiter, ...tokenValidation, handleValidationErrors, validateResetToken);

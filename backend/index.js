@@ -96,6 +96,39 @@ function validateEnvironmentVariables() {
 
 validateEnvironmentVariables();
 
+
+// ─────────────────────────────────────────────────────────────
+// 🔒 STEP 2.5: SAFETY CHECK – NODE_ENV=test in production
+// 
+// NODE_ENV=test disables: WAF, rate limiting, reCAPTCHA,
+// audit logging, and metadata collection. This must NEVER
+// happen in production. If it does, we exit immediately.
+// ─────────────────────────────────────────────────────────────
+function validateNodeEnv() {
+    const isCI = process.env.CI === 'true';
+    const isTestEnv = process.env.NODE_ENV === 'test';
+    
+    // Allow test mode in CI (GitHub Actions, etc.) – it's intentional
+    if (isTestEnv && isCI) {
+        console.log('🧪 Running in CI test mode – security controls disabled intentionally.');
+        return;
+    }
+    
+    // ❌ CRITICAL: Block test mode outside CI
+    if (isTestEnv && !isCI) {
+        console.error('\n❌ FATAL: NODE_ENV=test detected in non-CI environment!');
+        console.error('⚠️  This disables WAF, rate limiting, reCAPTCHA, audit logging, and metadata collection.');
+        console.error('💡 If you are running tests, set CI=true to bypass this check.');
+        console.error('💡 Example: CI=true NODE_ENV=test npm test\n');
+        process.exit(1);
+    }
+    
+    console.log(`✅ Running in ${process.env.NODE_ENV || 'development'} mode.`);
+}
+
+validateNodeEnv();
+
+
 // ─────────────────────────────────────────────────────────────
 // 🔧 COMMON BOOTSTRAP (DB + Config)
 // ─────────────────────────────────────────────────────────────
@@ -112,6 +145,7 @@ async function bootstrap() {
         console.warn('⚠️ Config init failed:', err.message);
     }
 }
+
 
 // ─────────────────────────────────────────────────────────────
 // 🚀 SINGLE PROCESS: HTTP SERVER + CRON JOBS
@@ -154,6 +188,7 @@ async function startServer() {
     process.on('SIGINT', shutdown);
 }
 
+
 // ─────────────────────────────────────────────────────────────
 // ❌ GLOBAL ERROR HANDLERS
 // ─────────────────────────────────────────────────────────────
@@ -166,6 +201,7 @@ process.on('uncaughtException', (err) => {
     console.error('💥 UNCAUGHT EXCEPTION', err);
     process.exit(1);
 });
+
 
 // ─────────────────────────────────────────────────────────────
 // ▶️ ENTRYPOINT
