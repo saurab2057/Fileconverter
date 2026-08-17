@@ -1,10 +1,11 @@
 // controllers/Authentication/passkeyController.js
 import {
   generateRegistrationOptions,
-  verifyRegistrationResponse,
+  verifyRegistrationResponse as realVerifyRegistrationResponse,
   generateAuthenticationOptions,
-  verifyAuthenticationResponse,
+  verifyAuthenticationResponse as realVerifyAuthenticationResponse,
 } from '@simplewebauthn/server';
+
 import Passkey from '../../models/Passkey.js';
 import User from '../../models/User.js';
 import mongoose from 'mongoose';
@@ -12,6 +13,47 @@ import { handleLoginSuccess } from './authController.js';
 import { logUserActivity } from '../../middleware/auditLogger.js';
 import { saveUserMetadata } from '../../middleware/collectUserMetadata.js';
 import { UAParser } from 'ua-parser-js';
+
+
+// ─────────────────────────────────────────────────────────────
+// WEBAUTHN VERIFIERS
+//
+// These default to the real @simplewebauthn/server functions.
+// Tests can temporarily replace them with mocks without changing
+// the actual production registration/authentication flow.
+// ─────────────────────────────────────────────────────────────
+
+let verifyRegistrationResponse = realVerifyRegistrationResponse;
+let verifyAuthenticationResponse = realVerifyAuthenticationResponse;
+
+/**
+ * Test-only dependency injection.
+ *
+ * Production code never needs to call this.
+ * Integration tests can inject deterministic WebAuthn verification
+ * results so that route/business-logic tests don't require a
+ * physical authenticator.
+ */
+export const __setWebAuthnTestVerifiers = ({
+  registration,
+  authentication,
+} = {}) => {
+  if (registration) {
+    verifyRegistrationResponse = registration;
+  }
+
+  if (authentication) {
+    verifyAuthenticationResponse = authentication;
+  }
+};
+
+/**
+ * Restore the real WebAuthn verification functions.
+ */
+export const __resetWebAuthnTestVerifiers = () => {
+  verifyRegistrationResponse = realVerifyRegistrationResponse;
+  verifyAuthenticationResponse = realVerifyAuthenticationResponse;
+};
 
 // ─────────────────────────────────────────────────────────────
 // WEBAUTHN CONFIG HELPER

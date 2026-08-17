@@ -1,5 +1,5 @@
 import express from 'express';
-import { authLimiter, refreshTokenLimite, resetPasswordLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, refreshTokenLimiter, resetPasswordLimiter } from '../middleware/rateLimiter.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import {
     signupValidation,
