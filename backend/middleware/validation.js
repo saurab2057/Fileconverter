@@ -25,20 +25,90 @@ export const validateUserUpdate = [
     }
 ];
 
+
 // ─────────────────────────────────────────────────────────────
 // INPUT VALIDATION: CONFIG UPDATE (system settings)
-// Prevents invalid values (e.g., negative file size) that could
-// break file conversion or system stability.
+// 
+//    🔥 WHY THIS MATTERS:
+//      Without this correction, an admin could submit a request with
+//      `maxFileSize` and the validation would pass, but the update would
+//      silently fail (since Mongoose would ignore unknown fields) – giving
+//      the admin a false sense that the config was updated.
+//      Worse, they might think their changes applied, but they didn't.
+//
+//    ✅ The fix below validates the actual schema fields with
+//       appropriate bounds to ensure data integrity and proper user feedback.
+//       Some are for future reference
 // ─────────────────────────────────────────────────────────────
 export const validateConfigUpdate = [
-    body('maxFileSize')
+    body('freeUserMaxFileSize')
         .optional()
         .isInt({ min: 1, max: 500 })
-        .withMessage('Max file size must be 1-500 MB'),
-    body('conversionLimit')
+        .withMessage('Free user max file size must be 1-500 MB'),
+    body('proUserMaxFileSize')
+        .optional()
+        .isInt({ min: 1, max: 2000 })
+        .withMessage('Pro user max file size must be 1-2000 MB'),
+    body('maxJobsPerHour')
         .optional()
         .isInt({ min: 1, max: 1000 })
-        .withMessage('Conversion limit must be 1-1000'),
+        .withMessage('Max jobs per hour must be 1-1000'),
+    body('maxProcessingTime')
+        .optional()
+        .isInt({ min: 10, max: 3600 })
+        .withMessage('Max processing time must be 10-3600 seconds'),
+    body('maxConcurrentJobs')
+        .optional()
+        .isInt({ min: 1, max: 50 })
+        .withMessage('Max concurrent jobs must be 1-50'),
+    body('cleanupInterval')
+        .optional()
+        .isInt({ min: 1, max: 168 })
+        .withMessage('Cleanup interval must be 1-168 hours'),
+    body('logRetentionDays')
+        .optional()
+        .isInt({ min: 1, max: 365 })
+        .withMessage('Log retention must be 1-365 days'),
+    body('enableRateLimit')
+        .optional()
+        .isBoolean()
+        .withMessage('enableRateLimit must be true/false'),
+    body('maxRequestsPerMinute')
+        .optional()
+        .isInt({ min: 1, max: 1000 })
+        .withMessage('Max requests per minute must be 1-1000'),
+    body('enableFileTypeValidation')
+        .optional()
+        .isBoolean()
+        .withMessage('enableFileTypeValidation must be true/false'),
+    body('allowedFileTypes')
+        .optional()
+        .isString()
+        .withMessage('allowedFileTypes must be a comma-separated string'),
+    body('enableEmailNotifications')
+        .optional()
+        .isBoolean()
+        .withMessage('enableEmailNotifications must be true/false'),
+    body('enableSlackAlerts')
+        .optional()
+        .isBoolean()
+        .withMessage('enableSlackAlerts must be true/false'),
+    body('alertThreshold')
+        .optional()
+        .isInt({ min: 1, max: 100 })
+        .withMessage('Alert threshold must be 1-100%'),
+    body('tempFileRetention')
+        .optional()
+        .isInt({ min: 1, max: 72 })
+        .withMessage('Temp file retention must be 1-72 hours'),
+    body('maxStorageGB')
+        .optional()
+        .isInt({ min: 1, max: 10000 })
+        .withMessage('Max storage must be 1-10000 GB'),
+    body('enableAutoBackup')
+        .optional()
+        .isBoolean()
+        .withMessage('enableAutoBackup must be true/false'),
     (req, res, next) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {

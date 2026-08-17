@@ -51,6 +51,19 @@ const app = express();
 // ─────────────────────────────────────────────────────────────
 app.set('trust proxy', 1);
 
+// ─────────────────────────────────────────────────────────────
+// 🔒 FORCE HTTPS IN PRODUCTION
+//
+// Redirect all HTTP traffic to HTTPS when running in production.
+// Trust proxy must be enabled for this to work behind Nginx/Cloudflare.
+// ─────────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'production' && !req.secure) {
+    return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+  }
+  next();
+});
+
 // Hide the fact that this is an Express server.
 // Helmet sets this too, but being explicit is safer.
 app.disable('x-powered-by');
@@ -89,7 +102,7 @@ app.use((req, res, next) => {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));        // handle preflight for all routes
 app.use(helmet(helmetOptions));
-app.use(express.json({ limit: '200kb' }));   // JSON bodies — 50KB cap
+app.use(express.json({ limit: '200kb' }));   // JSON bodies — 200KB cap
 app.use(express.urlencoded({ limit: '1mb', extended: true })); // form bodies — 1MB cap
 app.use(cookieParser());
 app.use(morgan('dev'));

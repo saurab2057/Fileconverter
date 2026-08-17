@@ -346,7 +346,7 @@ export const waf = (req, res, next) => {
         // ─────────────────────────────────────────────
         // CHECK 8: Oversized Payload
         // ─────────────────────────────────────────────
-        const PAYLOAD_LIMIT_BYTES = 200 * 1024; // 100KB
+        const PAYLOAD_LIMIT_BYTES = 200 * 1024; // 200KB
         const actualBytes = Buffer.byteLength(bodyStr, 'utf8');
         if (actualBytes > PAYLOAD_LIMIT_BYTES) {
             logBlockedRequest(req, 'OVERSIZED_PAYLOAD', `Size: ${actualBytes} bytes`);

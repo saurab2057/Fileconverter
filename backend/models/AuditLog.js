@@ -180,6 +180,21 @@ auditLogSchema.pre('deleteMany', function (next) {
     return next(new Error('Audit logs cannot be bulk deleted. Contact the security team for legal holds.'));
 });
 
+// 🔧 FIX: Also block Model.deleteOne({}) and Model.findOneAndDelete()
+//    The previous hooks only blocked doc.deleteOne() and deleteMany().
+//    These additional hooks ensure that any deletion attempt via
+//    Model.deleteOne(), findOneAndDelete(), or findByIdAndDelete()
+//    is also rejected, providing true immutability.
+
+auditLogSchema.pre('deleteOne', { query: true }, function (next) {
+    return next(new Error('Audit logs cannot be deleted. Contact the security team for legal holds.'));
+});
+
+auditLogSchema.pre('findOneAndDelete', function (next) {
+    return next(new Error('Audit logs cannot be deleted. Contact the security team for legal holds.'));
+});
+
+
 
 // ─────────────────────────────────────────────────────────────
 // HELPER: BUILD DETERMINISTIC HASH INPUT

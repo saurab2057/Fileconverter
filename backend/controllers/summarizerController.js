@@ -36,6 +36,10 @@ const runPdfWorker = (buffer, maxPages) => {
 
     worker.on('message', (msg) => {
       clearTimeout(timeout);
+      // 🔧 FIX: Terminate the worker after receiving the message
+      //    Without this, the worker thread stays alive and leaks
+      //    one thread per summarization.
+      worker.terminate();
       if (msg.success) {
         resolve(msg.result);
       } else {
@@ -45,11 +49,15 @@ const runPdfWorker = (buffer, maxPages) => {
 
     worker.on('error', (err) => {
       clearTimeout(timeout);
+      // 🔧 FIX: Also terminate on error
+      worker.terminate();
       reject(err);
     });
 
     worker.on('exit', (code) => {
       clearTimeout(timeout);
+      // 🔧 FIX: Ensure termination on exit (though it's already dead)
+      worker.terminate();
       if (code !== 0) {
         reject(new Error(`Worker stopped with exit code ${code}`));
       }
