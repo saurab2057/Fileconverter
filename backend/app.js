@@ -68,7 +68,17 @@ app.use((req, res, next) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// CORE MIDDLEWARE STACK
+// ⚠️ EXPRESS 5 WARNING
+//
+//   If you upgrade Express from v4 to v5, the wildcard syntax `'*'`
+//   changes to `'/{*splat}'` for route matching.
+//
+//   ❌ Express 4:  app.options('*', cors(corsOptions));
+//   ✅ Express 5:  app.options('/{*splat}', cors(corsOptions));
+//
+//   The same change applies to:
+//     - app.all('/api/*', ...)    →  app.all('/api/{*splat}', ...)
+//     - app.get('*', ...)         →  app.get('/{*splat}', ...)
 // ─────────────────────────────────────────────────────────────
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
@@ -116,7 +126,35 @@ app.get('/api/health', (req, res) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// WAF – mounted after body parsers, before routes
+// 🔒 GLOBAL WAF – SKIP FOR MULTIPART UPLOAD ROUTES
+//
+//   The global WAF runs on every request EXCEPT these three
+//   path groups:
+//     - /api/convert/*
+//     - /api/compress/*
+//     - /api/ai/*
+//
+//   Why we skip them at the GLOBAL level:
+//   ─────────────────────────────────────────────
+//   1. These endpoints handle file uploads using `multipart/form-data`.
+//   2. At this point (before multer runs), `req.body` is EMPTY.
+//      → The global WAF would scan nothing useful.
+//   3. Scanning raw multipart payloads (binary data) can cause
+//      false positives and unnecessary CPU overhead.
+//   4. The global WAF's injection/XSS checks rely on parsed fields
+//      (JSON keys/values) – which don't exist yet.
+//
+//   How these routes are STILL protected:
+//   ─────────────────────────────────────────────
+//   - Each route applies the WAF **after** multer has parsed the
+//     request (see route files: compressionRoute.js, conversionRoute.js,
+//     aisummarizerRoute.js).
+//   - The route‑level WAF scans the actual `req.body` fields
+//     (e.g., `settings`, `toFormat`) – which is what matters.
+//   - Additionally, the controllers call `validateFileSecurity()`
+//     for deep file‑level checks (steganography, entropy, etc.).
+//
+//   So: global skip + route‑level WAF = secure and efficient.
 // ─────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
     if (

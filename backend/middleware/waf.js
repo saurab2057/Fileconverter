@@ -359,8 +359,37 @@ export const waf = (req, res, next) => {
         next();
 
     } catch (err) {
-        // Fail open on unexpected WAF error
-        console.error('🚨 [WAF] Unexpected internal error — failing open:', err.message);
+    // ─────────────────────────────────────────────────────────────
+    // 🔒 WAF ERROR HANDLER – FAIL‑CLOSED IN PRODUCTION
+    //
+    //   What this does:
+    //     - If the WAF itself throws an unexpected error (bug, malformed
+    //       request, etc.), we do NOT let the request proceed to the route.
+    //     - In production, we return a 500 error – the request stops.
+    //     - In development, we still call next() so we can see the error
+    //       and fix it, but we log it clearly.
+    //
+    //   Why this matters:
+    //       (fail‑closed in production), even if the WAF breaks, the
+    //       request is blocked – defence in depth.
+    //
+    //   Important note:
+    //     - This does NOT affect the normal detection logic (XSS, NoSQL,
+    //       steg, entropy, etc.) – those already block attacks correctly.
+    //     - This only handles *unexpected* errors in the WAF code itself.
+    // ─────────────────────────────────────────────────────────────
+    console.error('🚨 [WAF] Internal error:', err.message);
+    console.error('   Stack:', err.stack);
+
+    if (process.env.NODE_ENV === 'production') {
+        // 🔒 Fail‑closed – block the request completely
+        return res.status(500).json({
+            message: 'Security check failed. Please try again later.'
+        });
+    } else {
+        // 🧪 In development, fail‑open so we can see the error and fix it
+        console.warn('⚠️ [WAF] Fail‑open in development – request continues (this is safe for testing)');
         next();
     }
+}
 };

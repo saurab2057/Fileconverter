@@ -94,7 +94,7 @@ const helmetOptions = {
         },
     },
     hsts: {
-        maxAge: 63072000, // 2 years — force HTTPS for this long once seen
+        maxAge: process.env.NODE_ENV === 'production' ? 63072000 : 0, // 2 years — force HTTPS for this long once seen
         includeSubDomains: true, // apply HSTS to all subdomains too
         preload: true, // eligible for browser HSTS preload lists
     },
