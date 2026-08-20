@@ -47,6 +47,8 @@ const SKIP_ENTROPY_MIMES = new Set([
     'video/x-matroska', 'video/x-msvideo', 'video/mpeg', 'video/3gpp',
     'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/webm',
     'audio/3gpp',
+    'application/pdf',
+
 ]);
 
 const ENTROPY_THRESHOLD = 7.8;
@@ -280,8 +282,6 @@ export const detectPolyglotFile = (buffer, detectedMime) => {
 const PDF_DANGEROUS_PATTERNS = [
     { pattern: /\/JS\s*[\s(<]/,           label: '/JS action' },
     { pattern: /\/JavaScript\s*[\s(<]/,   label: '/JavaScript action' },
-    { pattern: /\/AA\s*<</,               label: '/AA (Additional Actions) dict' },
-    { pattern: /\/OpenAction\s*[\s(<[/]/, label: '/OpenAction trigger' },
     { pattern: /\/Launch\s*<</,           label: '/Launch action (can run executables)' },
     { pattern: /\/SubmitForm/,            label: '/SubmitForm (data exfiltration)' },
     { pattern: /\/ImportData/,            label: '/ImportData (external data injection)' },

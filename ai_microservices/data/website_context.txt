@@ -1,52 +1,46 @@
 === WEBSITE INFORMATION ===
 
-Website Name: FileConverter Pro
-URL: https://fileconverter-pro.com
-Contact: support@fileconverter-pro.com
+Website Name: FileTools
+Website URL: https://filetools.com (or your actual domain)
+Contact Email: support@filetools.com (or your support email)
 
 ─────────────────────────────────────────────
 SERVICES OFFERED
 ─────────────────────────────────────────────
 
 1. File Conversion
-   - Image: PNG ↔ JPG, PNG → SVG, PDF → JPG, plus WebP and GIF output
-   - Video: MP4, WebM, MKV, MOV, AVI cross‑conversion (H.264 encoding)
-   - Audio: MP3, WAV, AAC, FLAC extraction and conversion
-   - GIF creation from video clips
+   - Convert between 50+ formats including video (MP4, MOV, MKV, WEBM, AVI), audio (MP3, WAV, AAC, FLAC), images (JPG, PNG, WEBP, SVG, GIF), and PDF (PDF → JPG only).
+   - All conversions are processed server‑side with high‑quality encoding.
 
 2. File Compression
-   - JPEG, PNG, WebP, GIF – lossy optimization with adjustable quality
-   - Video – H.264 CRF-based compression (quality levels: high/medium/low)
-   - Audio – bitrate reduction (192kbps / 128kbps / 96kbps)
-   - All compression preserves original resolution/format unless you choose otherwise
+   - Reduce file size for images (JPEG, PNG, WEBP), videos, and GIFs.
+   - Adjustable quality settings (e.g., compression level, CRF, bitrate).
+   - Preserves resolution and format unless you choose otherwise.
 
-3. AI Summarization
-   - Two input methods: upload a PDF (max 2 MB, only the first 5 pages are read) OR paste text directly into the summarizer
-   - The input size for text ranges from 50-512 words count
-   - PDF must be text-based; scanned/image-only PDFs are not supported (no OCR)
-   - The system generates a concise plain‑text summary
+3. AI Summarizer
+   - Upload a text‑based PDF (max 2 MB, first 5 pages) OR paste plain text (50‑512 words).
+   - Get a concise plain‑text summary of the content.
+   - Scanned/image‑only PDFs are not supported (no OCR).
 
 4. Batch Processing
-   - Upload up to 5 files at once
-   - All files are processed in parallel
-   - You receive individual download links for each output
-   - Applies to conversion/compression only — the AI Summarizer processes one PDF or one text input at a time, not batches
+   - Upload up to 5 files at once for conversion or compression.
+   - All files are processed in parallel; each output has its own download link.
+   - AI Summarizer is single‑input only (one PDF or one text at a time).
 
 ─────────────────────────────────────────────
-SUPPORTED FORMATS — FILE CONVERSION & COMPRESSION (INPUT)
+SUPPORTED INPUT FORMATS (Conversion & Compression)
 ─────────────────────────────────────────────
 Video:  MP4, MOV, MKV, AVI, WebM, MPEG, 3GPP
 Audio:  MP3, WAV, FLAC, AAC, OGG, M4A
 Image:  PNG, JPEG, GIF, WebP, BMP, TIFF, ICO
-Document: PDF (for conversion, only PDF → JPG is supported; SVG input is not allowed)
+Document: PDF (only PDF → JPG conversion; SVG input is not allowed)
 
 ─────────────────────────────────────────────
-SUPPORTED FORMATS — AI SUMMARIZATION (INPUT)
+INPUT FORMATS (AI Summarizer)
 ─────────────────────────────────────────────
-- PDF (text-based only, max 2 MB, first 5 pages extracted), or
-- Plain pasted text (no file upload required)
-- Other file types (DOCX, images, audio, video) are not accepted for summarization
-- The input size for text ranges from 50-512 words count
+- PDF (text‑based only, max 2 MB, first 5 pages)
+- Plain pasted text (no file upload; any length but may be truncated if too long)
+- No other file types (DOCX, images, audio, video) are accepted.
 
 ─────────────────────────────────────────────
 OUTPUT FORMATS
@@ -54,87 +48,98 @@ OUTPUT FORMATS
 Video:  MP4, WebM, MKV, MOV, AVI
 Audio:  MP3, WAV, AAC, FLAC
 Image:  PNG, JPG, WebP, SVG (from PNG only), GIF (from video only)
-Document: PDF is only accepted as input for conversion/summarization, never generated as output
-Summarization output: plain text only
+Document: PDF is only accepted as input – never generated as output.
+Summarizer output: plain text only.
 
 ─────────────────────────────────────────────
 FILE SIZE & QUANTITY LIMITS
 ─────────────────────────────────────────────
-- Single file (conversion/compression): up to 100 MB
-- Batch total (conversion/compression): all files combined must not exceed 100 MB, max 5 files per batch
-- AI Summarizer PDF: max 2 MB, first 5 pages only
-- AI Summarizer pasted text: no strict size limit, but very long text may be truncated
-- If you send a larger file or exceed the total limit, the server rejects the upload immediately
+- Single file (conversion/compression): up to 100 MB.
+- Batch total: combined size of all files in one batch must not exceed 100 MB.
+- Maximum files per batch: 5.
+- AI Summarizer PDF: max 2 MB, first 5 pages only.
+- AI Summarizer text: no strict limit, but very long input may be truncated.
+- If you exceed these limits, the upload is rejected immediately.
 
 ─────────────────────────────────────────────
-PRICING & ACCOUNT TIERS
+ACCOUNT TIERS & PRICING
 ─────────────────────────────────────────────
-Free Tier ($0/month)
-- 5 conversions per day
-- Standard processing speed
-- 24‑hour file retention
+Free Tier
+- Basic file size limits (see your Dashboard for exact numbers).
+- Standard processing speed.
+- Files are retained for 24 hours.
 
-Premium Tier ($9.99/month)
-- Unlimited conversions per day
-- Priority processing (faster queue)
-- All other features identical
+Pro Tier ($9.99/month or similar, adjust to actual price)
+- Higher file size limits.
+- Priority processing (faster queue).
+- All other features identical.
 
-Daily limit resets at midnight UTC. The counter is per user, not per IP.
-Note: the daily conversion limit applies to file conversion/compression only, not to AI Summarization requests.
+Note: The exact limits for each tier are displayed inside your Dashboard after logging in.
 
 ─────────────────────────────────────────────
 SECURITY & PRIVACY
 ─────────────────────────────────────────────
-- All uploaded files are deleted from our servers after 24 hours
-- Files are stored only in memory during processing – never written to disk
-- Every file is scanned for malware, hidden payloads, and injection attacks before processing
-- HTTPS only – data is encrypted in transit
-- We use Google OAuth for secure login (no password stored on our side)
-- Profile pictures are stored on Cloudinary, a secure cloud platform
-- WebAuthn / passkey support for password‑free authentication
-- We do not share, sell, or mine your files or data
+- All uploaded files are automatically deleted from our servers after 24 hours.
+- Files are processed in memory – never written to disk.
+- Every file is scanned for malware and malicious content before processing.
+- All data is transmitted over HTTPS.
+- We support Google OAuth and passwordless passkeys (WebAuthn) for secure authentication.
+- Profile pictures are stored securely on Cloudinary.
+- We do not share, sell, or mine your files or data.
 
 ─────────────────────────────────────────────
 COMMON ERRORS & TROUBLESHOOTING
 ─────────────────────────────────────────────
 1. "File extension does not match content type"
-   → You renamed a file to a different extension. Restore the original extension or convert with a tool that matches the actual file type.
+   → The file was renamed to a wrong extension. Restore the original extension or convert with a matching tool.
 
 2. "Compression did not produce an output file"
-   → The file might already be as small as possible, or the settings prevented a valid output. Try a milder quality setting.
+   → The file may already be at its minimum size, or the settings prevented a valid output. Try a milder quality setting.
 
 3. "Total file size exceeds 100 MB"
-   → The combined size of all files in one batch is over 100 MB. Split them into multiple requests.
+   → The combined size of all files in one batch exceeds the limit. Split them into separate requests.
 
 4. "No extractable text found"
-   → The PDF is likely image‑only (scanned pages). Our summarizer works with text‑based PDFs only.
+   → The PDF is likely image‑only (scanned). Our summarizer requires text‑based PDFs.
 
 5. "PDF processing timed out"
    → The PDF may be corrupted or too complex. Try a different file.
 
 6. "Invalid settings JSON"
-   → The options you selected in the frontend became corrupted. Refresh the page and try again.
+   → The options selected in the frontend became corrupted. Refresh the page and try again.
 
 ─────────────────────────────────────────────
-FREQUENTLY ASKED QUESTIONS
+FREQUENTLY ASKED QUESTIONS (FAQ)
 ─────────────────────────────────────────────
-Q: Can I convert DOCX or Excel files?
-A: No, we focus on media files and PDFs. Office documents are not supported.
+Q: How do I download all files at once?
+A: After processing, select multiple files and click "Download Selected" – they will be bundled into a ZIP archive.
+
+Q: How secure are my files?
+A: We encrypt files in transit, scan them for malware, and delete them automatically after 24 hours. We never share your data.
 
 Q: How long does a conversion take?
-A: Most files process in under 30 seconds. Large videos may take a few minutes. Premium users receive priority.
+A: Most files process in under 30 seconds. Large videos may take a few minutes. Pro users get priority.
 
 Q: Do you keep a copy of my files?
-A: No. Files are removed from our system 24 hours after processing.
+A: No. All files are permanently removed from our system 24 hours after processing.
 
-Q: What happens if my conversion fails?
-A: You'll see a clear error message. It won't count against your daily limit.
+Q: What if my conversion fails?
+A: You'll see a clear error message. It won't count toward any usage limits.
 
-Q: Is there an API?
-A: Currently we offer web‑based conversion only. An API is planned for the future.
+Q: Can I convert DOCX or Excel files?
+A: No, we currently support only media files and PDFs.
 
 Q: Can I convert a video to GIF?
-A: Yes, you can upload a video and select "GIF" as the output. Trimming is supported.
+A: Yes, select the video and choose "GIF" as the output. You can also trim the clip.
 
 Q: Can I summarize a Word document or scanned PDF?
-A: No. The AI Summarizer only accepts text-based PDFs or pasted plain text — Word documents and scanned/image-only PDFs are not supported.
+A: No. The AI Summarizer only accepts text‑based PDFs or pasted plain text.
+
+Q: Is there an API?
+A: Not yet – we offer a web‑based interface only, but an API is planned for the future.
+
+Q: How can I check my current usage limits?
+A: Log in and visit your Dashboard – your plan details and remaining limits are displayed there.
+
+Q: What happens if I exceed my daily or file size limit?
+A: The system will reject the upload and show an appropriate error message. Upgrading to Pro increases your limits.

@@ -1,6 +1,6 @@
 // workers/pdfWorker.js
 import { parentPort } from 'node:worker_threads';
-import { extractPdfText } from '../utils/pdfProcessor.js';
+import { extractPdfText } from '../middleware/pdfProcessor.js';
 
 
 // ─────────────────────────────────────────────────────────────

@@ -15,7 +15,6 @@ import helmet from 'helmet';
 import cors from 'cors';
 
 // 🔒 WAF IMPORT
-// Must be imported after body-parsing middleware is set up (see mounting order below)
 import { waf } from './middleware/waf.js';
 
 // 🔒 ROUTE IMPORTS
@@ -42,20 +41,11 @@ const app = express();
 
 // ─────────────────────────────────────────────────────────────
 // PROXY TRUST
-//
-// Tell Express to trust the first proxy in the chain
-// (Render / Railway / Nginx / Cloudflare). Without this:
-//   - req.ip returns the proxy's IP instead of the client's IP
-//   - Rate limiters key on the wrong IP
-//   - WAF logs wrong IPs
 // ─────────────────────────────────────────────────────────────
 app.set('trust proxy', 1);
 
 // ─────────────────────────────────────────────────────────────
 // 🔒 FORCE HTTPS IN PRODUCTION
-//
-// Redirect all HTTP traffic to HTTPS when running in production.
-// Trust proxy must be enabled for this to work behind Nginx/Cloudflare.
 // ─────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'production' && !req.secure) {
@@ -64,18 +54,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// Hide the fact that this is an Express server.
-// Helmet sets this too, but being explicit is safer.
 app.disable('x-powered-by');
 
 
 // ─────────────────────────────────────────────────────────────
 // REQUEST ID MIDDLEWARE
-//
-// Attaches a unique UUID to every request so you can trace a
-// specific request across all log lines in production.
-// Also sent back to the client via X-Request-ID so frontend
-// developers can include it in bug reports.
 // ─────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
     req.id = crypto.randomUUID();
@@ -86,41 +69,45 @@ app.use((req, res, next) => {
 
 // ─────────────────────────────────────────────────────────────
 // CORE MIDDLEWARE STACK
-//
-// ORDER MATTERS — each middleware depends on the one before it:
-//
-//   cors        → must run before any route (preflight OPTIONS)
-//   helmet      → sets security headers on every response
-//   json        → parses JSON body into req.body (WAF reads this)
-//   urlencoded  → parses form data into req.body (WAF reads this)
-//   cookieParser→ parses cookies (auth middleware reads these)
-//   morgan      → logs the request AFTER body is parsed
-//
-// The WAF is mounted AFTER these — it needs req.body to be
-// populated before it can scan for injection patterns.
 // ─────────────────────────────────────────────────────────────
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));        // handle preflight for all routes
+app.options('*', cors(corsOptions));
 app.use(helmet(helmetOptions));
-app.use(express.json({ limit: '200kb' }));   // JSON bodies — 200KB cap
-app.use(express.urlencoded({ limit: '1mb', extended: true })); // form bodies — 1MB cap
+
+// ─────────────────────────────────────────────────────────────
+// 🔒 PAYLOAD SIZE LIMITS – ROUTE‑SPECIFIC
+//    ORDER MATTERS: more specific routes must come BEFORE
+//    less specific ones. We mount the route‑specific parsers
+//    BEFORE the global parser so Express picks the right one.
+// ─────────────────────────────────────────────────────────────
+
+// 1. STRICT LIMIT for AUTH routes (15 KB) – login, signup, tokens, etc.
+app.use('/api/auth', express.json({ limit: '15kb' }));
+// Auth never uses URL‑encoded forms, but if it did, we'd also set:
+// app.use('/api/auth', express.urlencoded({ limit: '15kb', extended: true }));
+
+// 2. ADMIN routes (100 KB) – config updates can be larger
+app.use('/api/admin', express.json({ limit: '100kb' }));
+app.use('/api/admin', express.urlencoded({ limit: '100kb', extended: true }));
+
+// 3. GLOBAL fallback (200 KB) – for all other JSON endpoints
+app.use(express.json({ limit: '200kb' }));
+app.use(express.urlencoded({ limit: '200kb', extended: true }));
+
+// ─────────────────────────────────────────────────────────────
+// OTHER MIDDLEWARE (run after body parsing)
+// ─────────────────────────────────────────────────────────────
 app.use(cookieParser());
 app.use(morgan('dev'));
 
 
 // ─────────────────────────────────────────────────────────────
-// HEALTH CHECK — mounted BEFORE the WAF
-//
-// The health check endpoint receives no user input and carries
-// no security risk, so there is no value in running it through
-// the WAF. Keeping it before the WAF also means:
-//   - Load balancer pings are never accidentally blocked
-//   - Health checks don't pollute WAF metrics / logs
+// HEALTH CHECK – before WAF
 // ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
     res.json({
         status:      'ok',
-        uptime:      process.uptime(),      // seconds the server has been running
+        uptime:      process.uptime(),
         db:          mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         timestamp:   new Date().toISOString(),
         environment: process.env.NODE_ENV || 'development'
@@ -129,17 +116,14 @@ app.get('/api/health', (req, res) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// WAF — mounted AFTER body parsers, BEFORE all route handlers
-// ─────────────────────────────────────────────────────────────
-// 🔒 FIX: Skip WAF for multipart routes (/api/convert, /api/compress)
-//   These routes handle multipart/form-data which multer processes INSIDE the route.
-//   The global WAF would see an empty req.body. We'll apply WAF manually AFTER multer
-//   in those route files so it can scan the actual fields.
+// WAF – mounted after body parsers, before routes
 // ─────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
-    // Skip WAF for routes that use multipart/form-data
-    // They will apply WAF internally after multer
-    if (req.path.startsWith('/api/convert') || req.path.startsWith('/api/compress')) {
+    if (
+        req.path.startsWith('/api/convert') ||
+        req.path.startsWith('/api/compress') ||
+        req.path.startsWith('/api/ai')
+    ) {
         return next();
     }
     return waf(req, res, next);
@@ -148,7 +132,6 @@ app.use((req, res, next) => {
 
 // ─────────────────────────────────────────────────────────────
 // ROUTE HANDLERS
-// All routes below are protected by the WAF above.
 // ─────────────────────────────────────────────────────────────
 app.use('/api/auth',      authRoutes);
 app.use('/api/user',      userRoutes);
@@ -162,12 +145,7 @@ app.use('/api/passkeys',  passkeyRoutes);
 
 
 // ─────────────────────────────────────────────────────────────
-// STATIC FRONTEND — React build output
-//
-// Cache-Control is set to no-store for HTML files only.
-// HTML must always be fresh so users get the latest app version.
-// Static assets (JS/CSS/images) can be cached by the browser
-// because they have content-hashed filenames from the React build.
+// STATIC FRONTEND
 // ─────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, '../frontend/build'), {
     setHeaders: (res, filePath) => {
@@ -179,11 +157,7 @@ app.use(express.static(path.join(__dirname, '../frontend/build'), {
 
 
 // ─────────────────────────────────────────────────────────────
-// 404 HANDLER — unknown API routes
-//
-// Must come AFTER all app.use('/api/...') route mounts and
-// BEFORE the React catch-all below, so unknown API calls get
-// a proper JSON error instead of the React index.html.
+// 404 HANDLER – unknown API routes
 // ─────────────────────────────────────────────────────────────
 app.all('/api/*', (req, res, next) => {
     next(new AppError(`API route not found: ${req.originalUrl}`, 404));
@@ -191,12 +165,7 @@ app.all('/api/*', (req, res, next) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// REACT CATCH-ALL — must be the very last route
-//
-// Returns index.html for any non-API, non-static request so that
-// React Router can handle client-side navigation (e.g. /dashboard,
-// /reset-password, /login). Without this, a hard refresh on any
-// non-root path would return a 404 from Express.
+// REACT CATCH‑ALL
 // ─────────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/build', 'index.html'));
@@ -204,11 +173,7 @@ app.get('*', (req, res) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// GLOBAL ERROR HANDLER — must be the very last middleware
-//
-// Express identifies error-handling middleware by its 4-argument
-// signature (err, req, res, next). It catches errors thrown by
-// routes and passed via next(err).
+// GLOBAL ERROR HANDLER
 // ─────────────────────────────────────────────────────────────
 app.use(globalErrorHandler);
 

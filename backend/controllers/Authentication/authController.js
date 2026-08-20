@@ -5,7 +5,6 @@ import Session from '../../models/Session.js';
 import { saveUserMetadata } from '../../middleware/collectUserMetadata.js';
 import { hashIP, generateJti, generateDeviceId } from '../../utils/authSecurity.js'; // ✅ added generateDeviceId
 import { logUserActivity } from '../../middleware/auditLogger.js';
-import { OAuth2Client } from 'google-auth-library';
 
 // ─────────────────────────────────────────────────────────────
 // CORE HELPER: handleLoginSuccess

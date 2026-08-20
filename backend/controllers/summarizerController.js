@@ -94,8 +94,18 @@ export const handleSummarization = async (req, res) => {
           });
         }
 
-        // 🔒 STEP 3: Sanitize extracted text
+       // 🔒 STEP 3: Sanitize extracted text
         inputText = sanitizeInput(extractedText);
+
+        // 🔒 STEP 3.5: Block prompt-injection patterns in extracted PDF text
+        // (mirrors the check already applied to the plain-text input path below —
+        // this branch was previously missing it entirely)
+        if (containsForbiddenPatterns(inputText, SUMMARIZER_FORBIDDEN_PATTERNS)) {
+          console.warn(`[SECURITY BLOCK] Forbidden pattern in PDF-extracted text from IP: ${req.ip}`);
+          return res.status(403).json({
+            message: 'PDF content contains blocked patterns. Please use a different file.'
+          });
+        }
       } catch (workerError) {
         console.error('PDF Worker Error:', workerError.message);
         return res.status(500).json({

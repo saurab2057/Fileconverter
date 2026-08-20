@@ -148,21 +148,17 @@ async function bootstrap() {
 
 
 // ─────────────────────────────────────────────────────────────
-// 🚀 SINGLE PROCESS: HTTP SERVER + CRON JOBS
+// 🚀 SINGLE PROCESS: HTTP SERVER
 // ─────────────────────────────────────────────────────────────
 async function startServer() {
     const { default: app } = await import('./app.js');
-    const { registerCronJobs } = await import('./cronJobs.js');
 
     const PORT = process.env.PORT || 5000;
 
     // 1. Connect to MongoDB and initialize configuration
     await bootstrap();
 
-    // 2. Register cron jobs (only once, perfect in single process)
-    registerCronJobs();
-
-    // 3. Start listening
+    // 2. Start listening
     const server = app.listen(PORT, () => {
         console.log(`🚀 Server running on port ${PORT} [PID ${process.pid}]`);
     });
