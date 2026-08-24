@@ -126,18 +126,6 @@ tmp/
 !uploads/.gitkeep
 
 # ===========================
-# 🧪 TESTING & DEBUG
-# ===========================
-*.test.js
-*.spec.js
-__tests__/
-test/
-tests/
-.mocharc.integration.cjs      
-.mocharc.unit.cjs
-sinon-21.0.2.tgz
-
-# ===========================
 # 📦 PACKAGE MANAGER LOCKS (Optional)
 # ===========================
 # Keep package-lock.json or yarn.lock if you want reproducible builds
@@ -160,4 +148,3 @@ ai_microservices/temp/
 # ===========================
 # ✅ KEEP THESE (Don't ignore)
 # ===========================
-
