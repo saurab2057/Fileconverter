@@ -183,15 +183,47 @@ app.use('/api/passkeys',  passkeyRoutes);
 
 
 // ─────────────────────────────────────────────────────────────
-// STATIC FRONTEND
+// STATIC FRONTEND SERVING
 // ─────────────────────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, '../frontend/build'), {
-    setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.html')) {
-            res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-        }
-    },
-}));
+//
+// PURPOSE:
+// Express serves the already-built React frontend files
+// (index.html, JavaScript bundles, CSS, images, etc.).
+//
+// USE THIS WHEN:
+// - Backend and frontend are deployed together on the same server.
+// - Express is responsible for serving the React application.
+// - Example deployment:
+//       User → Express/Node.js → React build + API routes
+//
+// DO NOT USE THIS WHEN:
+// - Frontend is deployed separately using services like:
+//       Vercel, Netlify, Cloudflare Pages, etc.
+// - Backend is only responsible for API endpoints.
+// - Example deployment:
+//       User → Vercel (React frontend)
+//       User → Render (Express API)
+//
+// In a separate frontend/backend deployment, serving React files
+// from Express is unnecessary because the frontend host already
+// handles static files and CDN caching.
+//
+// CACHE CONTROL:
+// HTML files are never cached because index.html contains references
+// to the latest hashed JavaScript/CSS bundles. This ensures users
+// receive the newest application version after deployment.
+//
+// Static assets (JS, CSS, images) can safely be cached because
+// Vite generates unique hashed filenames whenever content changes.
+// ─────────────────────────────────────────────────────────────
+
+//app.use(express.static(path.join(__dirname, '../frontend/build'), {
+//    setHeaders: (res, filePath) => {
+//        if (filePath.endsWith('.html')) {
+//            res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+//        }
+//    },
+//}));
 
 
 // ─────────────────────────────────────────────────────────────

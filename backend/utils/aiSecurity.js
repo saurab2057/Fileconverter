@@ -26,7 +26,7 @@ export const CHAT_FORBIDDEN_PATTERNS = [
   /disregard\s+(previous|above)/i,
 
   /system\s*[:=]\s*["']?role/i,
-  /system\s*:\s*["']?/i, // extra coverage
+  /system\s*:\s*["']?/i,
   /<\|system\|>/i,
   /role\s*=\s*["']system["']/i,
 
@@ -44,7 +44,7 @@ export const CHAT_FORBIDDEN_PATTERNS = [
 
   /bypass\s+(security|filters)/i,
   /jailbreak/i,
-  /do\s+anything\s+now/i, // DAN-style
+  /do\s+anything\s+now/i,
 
   /base64_decode|atob|btoa/i,
   /union\s+select/i,
@@ -75,13 +75,18 @@ export const SUMMARIZER_FORBIDDEN_PATTERNS = [
 // 🔒 Dangerous Unicode Characters
 // ==============================
 
-// Control chars + bidi override (used in hidden injection attacks)
-const CONTROL_CHARS_REGEX =
-  /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E]/g;
+/**
+ * Control characters regex that removes dangerous Unicode control characters
+ * but PRESERVES newlines (\n = 0x0A) and carriage returns (\r = 0x0D)
+ * 
+ * Why: Newlines are essential for markdown list formatting in AI responses
+ * Range: \u0000-\u0009 (0-9) and \u000B-\u001F (11-31) - skips \u000A (10) and \u000D (13)
+ */
+const CONTROL_CHARS_REGEX = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E]/g;
 
 
 // ==============================
-// 🧹 Input Sanitization
+// 🧹 Input Sanitization (FOR USER INPUT ONLY)
 // ==============================
 
 export const sanitizeInput = (text = '') => {
@@ -97,7 +102,8 @@ export const sanitizeInput = (text = '') => {
 
     // Remove emojis (optional but reduces noise)
     .replace(/[\p{Extended_Pictographic}\u{1F000}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
-    // Normalize whitespace
+
+    // Collapse ALL whitespace to single spaces (for user input only)
     .replace(/\s+/g, ' ')
     .trim();
 };
@@ -129,27 +135,34 @@ export const truncateToWords = (text, maxWords) => {
 
 
 // ==============================
-// 🛡️ AI Response Sanitization
+// 🛡️ AI Response Sanitization (PRESERVES MARKDOWN FORMATTING)
 // ==============================
 
 export const sanitizeAiResponse = (text) => {
   if (!text) return 'No response generated';
 
   return text
-    // Remove control characters only (keep international text intact)
+    // Remove dangerous control characters (newlines are preserved)
     .replace(CONTROL_CHARS_REGEX, '')
 
     // Remove spammy symbol clusters
     .replace(/[$%#^*&]{3,}/g, '')
 
-    // Escape HTML (prevents XSS)
+    // Escape HTML to prevent XSS (ReactMarkdown handles rendering safely)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
 
-    // Normalize whitespace
-    .replace(/\s+/g, ' ')
+    // Collapse multiple spaces/tabs to single space (but preserve newlines)
+    .replace(/[ \t]{2,}/g, ' ')
+
+    // Clean up whitespace around newlines (preserve newlines)
+    .replace(/[ \t]*\n[ \t]*/g, '\n')
+
+    // Collapse 3+ newlines to 2 (keeps markdown lists readable)
+    .replace(/\n{3,}/g, '\n\n')
+
     .trim();
 };

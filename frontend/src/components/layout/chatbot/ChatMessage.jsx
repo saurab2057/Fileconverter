@@ -1,25 +1,35 @@
 // ChatMessage.jsx
-import { decodeHTML } from '@/lib/htmlUtils'; // adjust path as needed
+import ReactMarkdown from 'react-markdown';
+
+const markdownComponents = {
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 last:mb-0 space-y-1">{children}</ol>,
+  ul: ({ children }) => <ul className="list-disc pl-5 mb-2 last:mb-0 space-y-1">{children}</ul>,
+  li: ({ children }) => <li>{children}</li>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline">
+      {children}
+    </a>
+  ),
+};
 
 const ChatMessage = ({ message, onSuggestionClick }) => {
-  // Decode content for display (but keep original for safety)
-  const displayContent = decodeHTML(message.content);
-
   return (
     <div className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[80%]`}>
-        <div className={`p-3 rounded-2xl ${ 
-          message.type === 'user' 
-            ? 'bg-blue-600 text-white rounded-br-md' 
-            : message.error 
-              ? 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded-bl-md border border-red-200 dark:border-red-800' 
+      <div className="max-w-[80%]">
+        <div className={`p-3 rounded-2xl text-sm leading-relaxed ${
+          message.type === 'user'
+            ? 'bg-blue-600 text-white rounded-br-md'
+            : message.error
+              ? 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded-bl-md border border-red-200 dark:border-red-800'
               : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-bl-md'
         } transition-colors duration-300`}>
           
-          {/* ✅ Decoded content */}
-          {displayContent}
+          <ReactMarkdown components={markdownComponents}>
+            {message.content}
+          </ReactMarkdown>
 
-          {/* Suggestions (already safe, no decoding needed) */}
           {message.suggestions && message.suggestions.length > 0 && (
             <div className="mt-3 space-y-2">
               {message.suggestions.map((suggestion, index) => (

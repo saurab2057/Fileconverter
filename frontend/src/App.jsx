@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { ToastProvider } from '@/context/ToastContext';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
+import NotFound from '@/components/common/NotFound';
 
 // Static, small imports stay eager (essential for the app shell)
 import { AuthProvider } from '@/lib/AuthContext';
@@ -40,7 +41,6 @@ const DynamicCompressorPage = lazy(() => import('@/features/compression/pages/Dy
 const PdfToSummary          = lazy(() => import('@/features/conversion/pages/PdfToSummary'));
 const UserDashboard         = lazy(() => import('@/components/layout/Dashboard/UserDashboard'));
 const AdminRoutes           = lazy(() => import('@/routes/AdminRoutes'));
-const NotFound              = lazy(() => import('@/components/common/NotFound'));
 
 // ─────────────────────────────────────────────────────────────
 // AdminRoutes gets a minimal spinner — admin traffic is low and
