@@ -10,6 +10,7 @@ const allowedOrigins = [
     'http://localhost:5173', // Vite dev server
     'http://localhost:4173', // Vite preview server
     'https://fileconverter-f349y81ta-saurabs-projects-5db97c80.vercel.app',
+    'https://fileconverter-mu.vercel.app',
     process.env.FRONTEND_URL // deployed frontend
 ].filter(Boolean);
 
