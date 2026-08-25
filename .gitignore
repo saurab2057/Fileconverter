@@ -96,7 +96,7 @@ desktop.ini
 # ⚙️ BACKEND (Node/Express)
 # ===========================
 # Logs
-logs/
++/backend/logs/
 *.log
 npm-debug.log*
 
