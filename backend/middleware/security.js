@@ -9,7 +9,7 @@ import cookieParser from 'cookie-parser';
 const allowedOrigins = [
     'http://localhost:5173', // Vite dev server
     'http://localhost:4173', // Vite preview server
-    'http://localhost:3000', // local backend/frontend testing
+    'https://fileconverter-f349y81ta-saurabs-projects-5db97c80.vercel.app',
     process.env.FRONTEND_URL // deployed frontend
 ].filter(Boolean);
 
