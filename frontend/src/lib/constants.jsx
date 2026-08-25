@@ -4,7 +4,7 @@
 // ENVIRONMENT VARIABLES (with validation fallbacks)
 // ─────────────────────────────────────────────────────────────
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://backend-kijk.onrender.com';
 
 export const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LfF_JkrAAAAADh5eTSImyZkNRgezC6UNdxzC0no';
 
