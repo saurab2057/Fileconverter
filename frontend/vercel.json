@@ -10,7 +10,7 @@
         },
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://backend-kijk.onrender.com"
+          "value": "https://fileconverter-mu.vercel.app" // ✅ CORRECT - your frontend URL
         },
         {
           "key": "Access-Control-Allow-Methods",
