@@ -10,7 +10,7 @@
         },
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://fileconverter-mu.vercel.app" // ✅ CORRECT - your frontend URL
+          "value": "https://fileconverter-mu.vercel.app"
         },
         {
           "key": "Access-Control-Allow-Methods",
