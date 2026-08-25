@@ -233,15 +233,6 @@ app.all('/api/*', (req, res, next) => {
     next(new AppError(`API route not found: ${req.originalUrl}`, 404));
 });
 
-
-// ─────────────────────────────────────────────────────────────
-// REACT CATCH‑ALL
-// ─────────────────────────────────────────────────────────────
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/build', 'index.html'));
-});
-
-
 // ─────────────────────────────────────────────────────────────
 // GLOBAL ERROR HANDLER
 // ─────────────────────────────────────────────────────────────
