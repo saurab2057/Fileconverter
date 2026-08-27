@@ -29,13 +29,16 @@ export const authService = {
   },
 
   /**
-   * Google OAuth login.
-   * @param {Object} googleData - { access_token}
+   * Fetch a one-time CSRF `state` token before starting Google OAuth.
+   * Backend stores the matching value in an httpOnly cookie
+   * (see authController.js googleAuthInit) and verifies it on
+   * /google/callback before completing the login. Call this on
+   * mount of the Login/Signup page, before the user can click
+   * "Continue with Google".
+   * @returns {Promise} - { state }
    */
-  googleAuth: async (googleData) => {
-    const { data } = await apiClient.post('/api/auth/google', {
-      access_token: googleData.access_token,
-    });
+  getGoogleOauthState: async () => {
+    const { data } = await apiClient.get('/api/auth/google/init');
     return data;
   },
 
@@ -137,15 +140,6 @@ export const authService = {
    */
   updateProfile: async (payload) => {
     const { data } = await apiClient.put('/api/user/profile', payload);
-    return data;
-  },
-
-  /**
-   * Get current user profile.
-   * @returns {Promise} - User object
-   */
-  getProfile: async () => {
-    const { data } = await apiClient.get('/api/user/profile');
     return data;
   },
 };
