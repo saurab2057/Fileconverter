@@ -7,12 +7,13 @@ import {
     forgotPasswordValidation,
     tokenValidation,
     newPasswordValidation,
-    handleValidationErrors
+    handleValidationErrors,
+    googleCallbackValidation,
 } from '../middleware/validation.js';
 import { verifyRecaptcha } from '../middleware/recaptchaMiddleware.js';
 
 // ✅ Import from all three controllers
-import { googleAuth, signup, login } from '../controllers/Authentication/authController.js';
+import { googleAuthInit, googleAuthCallback, signup, login } from '../controllers/Authentication/authController.js';
 import { forgotPassword, validateResetToken, resetPassword } from '../controllers/Authentication/passwordController.js';
 import { refreshToken, logout, logoutAllDevices, getActiveSessions, revokeSession } from '../controllers/Authentication/sessionController.js';
 
@@ -25,10 +26,11 @@ router.use((req, res, next) => {
 });
 
 // 🔒 ROUTE DEFINITIONS
-router.post('/google', authLimiter, googleAuth);
-router.post('/signup', authLimiter, ...signupValidation, handleValidationErrors, verifyRecaptcha, signup);
-router.post('/login', authLimiter, ...loginValidation, handleValidationErrors, verifyRecaptcha, login);
-router.post('/forgot-password', authLimiter, ...forgotPasswordValidation, handleValidationErrors, verifyRecaptcha, forgotPassword);
+router.get('/google/init', authLimiter, googleAuthInit);
+router.get('/google/callback', authLimiter, ...googleCallbackValidation, googleAuthCallback);
+router.post('/signup', authLimiter, ...signupValidation, handleValidationErrors, verifyRecaptcha('signup'), signup);
+router.post('/login', authLimiter, ...loginValidation, handleValidationErrors, verifyRecaptcha('login'), login);
+router.post('/forgot-password', authLimiter, ...forgotPasswordValidation, handleValidationErrors, verifyRecaptcha('forgot_password'), forgotPassword);
 
 // 🔒 No reCAPTCHA here — users arrive via email link and won't have a reCAPTCHA widget loaded.
 // This route is already protected by the reset_session httpOnly cookie set in /validate-reset-token.
