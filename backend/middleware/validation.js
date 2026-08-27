@@ -1,4 +1,4 @@
-import { body, validationResult } from 'express-validator';
+import { body, query, validationResult } from 'express-validator';
 import User from '../models/User.js';
 
 
@@ -226,4 +226,28 @@ export const changePasswordValidation = [
 export const passkeyLabelValidation = [
     body('label').trim().isLength({ min: 1, max: 50 }).withMessage('Label must be 1-50 characters'),
     handleValidationErrors
+];
+
+// ─────────────────────────────────────────────────────────────
+// VALIDATION: GOOGLE OAUTH CALLBACK
+// 'code' and 'error' are optional — Google sends exactly one of
+// them depending on whether the user consented or cancelled.
+// 'state' is required — it's the CSRF token we issued in
+// googleAuthInit and must come back on every real callback.
+// The controller (googleAuthCallback) does the actual state
+// comparison against the cookie; this just sanitises the field.
+// ─────────────────────────────────────────────────────────────
+export const googleCallbackValidation = [
+    query('code').optional().trim().isLength({ max: 2048 }),
+    query('error').optional().trim().isLength({ max: 256 }),
+    query('state').notEmpty().trim().isLength({ min: 1, max: 128 }),
+    (req, res, next) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            // Malformed query string — treat like any other Google
+            // auth failure rather than surfacing a raw 400 JSON error.
+            return res.redirect(`${process.env.FRONTEND_URL}/login?error=google_auth_failed`);
+        }
+        next();
+    }
 ];

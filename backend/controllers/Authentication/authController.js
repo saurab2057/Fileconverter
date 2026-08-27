@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import User from '../../models/User.js';
 import Session from '../../models/Session.js';
 import { saveUserMetadata } from '../../middleware/collectUserMetadata.js';
@@ -25,7 +26,7 @@ import { logUserActivity } from '../../middleware/auditLogger.js';
 //   6. Return the access token + user info to the client
 //   7. Log the login event to the activity log
 // ─────────────────────────────────────────────────────────────
-export const handleLoginSuccess = async (res, user, req) => {
+export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) => {
 
     // Environment secrets & token config
     const accessTokenSecret = process.env.ACCESS_SECRET_KEY;
@@ -109,6 +110,9 @@ export const handleLoginSuccess = async (res, user, req) => {
             userAgent
         );
 
+        if (redirectTo) {
+            return res.redirect(redirectTo);
+        }
         return res.json({ accessToken, user: userInfo });
 
     } catch (error) {
@@ -120,97 +124,131 @@ export const handleLoginSuccess = async (res, user, req) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// GOOGLE AUTH: googleAuth
-// Handles login/signup via Google OAuth.
+// GOOGLE AUTH INIT: googleAuthInit
 //
-// Flow:
-//   1. Verify Google access token with Google's userinfo API
-//   2. Check if user exists by email
-//      a. New → create with authProvider: 'google'
-//      b. Existing + email provider → block (provider conflict)
-//      c. Existing + google provider → allow, update picture if changed
-//   3. Block suspended users
-//   4. Save metadata + proceed to handleLoginSuccess (deviceId generated inside)
-// ─────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────
-// GOOGLE AUTH: googleAuth
+// GET /api/auth/google/init
+// Called by the frontend BEFORE redirecting the user to Google's
+// consent screen. Issues a one-time random `state` value, stores
+// it in a short-lived httpOnly cookie, and returns it to the
+// client so it can be passed to Google as the `state` param.
 //
-// Frontend uses @react-oauth/google -> useGoogleLogin()
-// which gives us an OAuth ACCESS TOKEN, not an ID token.
+// WHY THIS EXISTS:
+//   Without a state check, an attacker can complete their OWN
+//   Google OAuth flow, then send the resulting callback URL
+//   (with their valid `code`) to a victim. If the victim opens
+//   it, googleAuthCallback would log the victim's browser into
+//   the attacker's account — a login CSRF attack.
 //
-// Therefore:
-// ❌ Do NOT use client.verifyIdToken()
-// ✅ Use Google's userinfo endpoint with the access token
+//   By requiring the state returned from Google to match the
+//   state we stored in this cookie, we guarantee the callback
+//   only completes for the same browser that started the flow.
+//
+// The cookie is scoped to /api/auth/google (not the whole site)
+// and expires in 2 minutes — long enough for the Google consent
+// screen, short enough to limit replay risk.
 // ─────────────────────────────────────────────────────────────
-export const googleAuth = async (req, res) => {
-    const { access_token } = req.body;
+export const googleAuthInit = (req, res) => {
+    const state = crypto.randomBytes(32).toString('hex');
 
-    if (!access_token) {
-        return res.status(400).json({
-            message: 'Google access token missing.'
-        });
+    res.cookie('oauth_state', state, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 2 * 60 * 1000, // 2 minutes
+        path: '/api/auth/google',
+    });
+
+    return res.json({ state });
+};
+
+
+// ─────────────────────────────────────────────────────────────
+// GOOGLE AUTH CALLBACK: googleAuthCallback
+//
+// GET /api/auth/google/callback
+// Google redirects here directly with ?code=...&state=... after
+// consent. This replaces the old popup-based googleAuth(access_token)
+// flow.
+//
+// FIXES applied:
+//   - Verifies `state` against the oauth_state cookie set by
+//     googleAuthInit, before doing anything else. Prevents login CSRF.
+// ─────────────────────────────────────────────────────────────
+export const googleAuthCallback = async (req, res) => {
+    const { code, state, error: googleError } = req.query;
+    const frontendUrl = process.env.FRONTEND_URL;
+    const stateCookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/api/auth/google',
+    };
+
+    // 🔒 Verify state before anything else — closes login-CSRF.
+    // Cleared either way so it can never be reused.
+    const expectedState = req.cookies.oauth_state;
+    res.clearCookie('oauth_state', stateCookieOptions);
+
+    if (!state || !expectedState || state !== expectedState) {
+        return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
+    }
+
+    if (googleError) {
+        return res.redirect(`${frontendUrl}/login?error=google_auth_cancelled`);
+    }
+    if (!code) {
+        return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
     }
 
     try {
-        // ─────────────────────────────────────────────────────
-        // 1. Verify the Google OAuth access token
-        //    by requesting the authenticated user's profile.
-        // ─────────────────────────────────────────────────────
+        // 1. Exchange the authorization code for tokens.
+        //    Uses GOOGLE_CLIENT_SECRET — stays server-side only.
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                code,
+                client_id: process.env.GOOGLE_CLIENT_ID,
+                client_secret: process.env.GOOGLE_CLIENT_SECRET,
+                redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+                grant_type: 'authorization_code',
+            }),
+        });
+
+        if (!tokenResponse.ok) {
+            console.error('Google token exchange failed:', tokenResponse.status, await tokenResponse.text());
+            return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
+        }
+
+        const { access_token } = await tokenResponse.json();
+
+        // 2. Verify identity via userinfo
         const googleResponse = await fetch(
             'https://www.googleapis.com/oauth2/v3/userinfo',
-            {
-                method: 'GET',
-                headers: {
-                    Authorization: `Bearer ${access_token}`,
-                },
-            }
+            { method: 'GET', headers: { Authorization: `Bearer ${access_token}` } }
         );
 
         if (!googleResponse.ok) {
-            console.error(
-                'Google userinfo request failed:',
-                googleResponse.status
-            );
-
-            return res.status(401).json({
-                message: 'Invalid or expired Google authentication.'
-            });
+            console.error('Google userinfo request failed:', googleResponse.status);
+            return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
         }
 
         const payload = await googleResponse.json();
 
-        // ─────────────────────────────────────────────────────
-        // 2. Validate Google profile response
-        // ─────────────────────────────────────────────────────
         if (!payload || !payload.email) {
-            return res.status(401).json({
-                message: 'Google authentication did not return a valid email.'
-            });
+            return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
         }
 
-        const {
-            name,
-            email,
-            picture,
-            email_verified,
-            sub: googleId,
-        } = payload;
+        const { name, email, picture, email_verified } = payload;
 
-        // Require Google's email verification
         if (email_verified !== true) {
-            return res.status(401).json({
-                message: 'Your Google email address is not verified.'
-            });
+            return res.redirect(`${frontendUrl}/login?error=google_email_unverified`);
         }
 
-        // ─────────────────────────────────────────────────────
         // 3. Find existing user
-        // ─────────────────────────────────────────────────────
         let user = await User.findOne({ email });
 
-        // ─────────────────────────────────────────────────────
         // 4. Create new Google user
-        // ─────────────────────────────────────────────────────
         if (!user) {
             user = new User({
                 name: name || 'Google User',
@@ -218,60 +256,36 @@ export const googleAuth = async (req, res) => {
                 authProvider: 'google',
                 profilePictureUrl: picture || null,
             });
-
             await user.save();
         }
-
-        // ─────────────────────────────────────────────────────
-        // 5. Existing email/password account
-        // ─────────────────────────────────────────────────────
+        // 5. Existing email/password account — block
         else if (user.authProvider === 'email') {
-            return res.status(400).json({
-                message:
-                    'This email is registered with a password. Please login with your email and password.'
-            });
+            return res.redirect(`${frontendUrl}/login?error=email_provider_conflict`);
         }
-
-        // ─────────────────────────────────────────────────────
-        // 6. Existing Google account
-        //    Update profile picture if Google changed it.
-        // ─────────────────────────────────────────────────────
+        // 6. Existing Google account — refresh picture if changed
         else {
-            if (
-                picture &&
-                user.profilePictureUrl !== picture
-            ) {
+            if (picture && user.profilePictureUrl !== picture) {
                 user.profilePictureUrl = picture;
                 await user.save();
             }
         }
 
-        // ─────────────────────────────────────────────────────
         // 7. Block inactive/banned accounts
-        // ─────────────────────────────────────────────────────
         if (user.status !== 'active') {
-            return res.status(403).json({
-                message:
-                    'Your account has been banned. Please contact support.'
-            });
+            return res.redirect(`${frontendUrl}/login?error=account_banned`);
         }
 
-        // ─────────────────────────────────────────────────────
         // 8. Save login metadata
-        // ─────────────────────────────────────────────────────
         await saveUserMetadata(req, user._id);
 
-        // ─────────────────────────────────────────────────────
-        // 9. Create your normal application session/JWTs
-        // ─────────────────────────────────────────────────────
-        return handleLoginSuccess(res, user, req);
+        // 9. Issue session cookie + redirect into the app
+        return handleLoginSuccess(res, user, req, {
+            redirectTo: user.role === 'admin' ? `${frontendUrl}/admin` : frontendUrl,
+        });
 
     } catch (err) {
-        console.error('Google Auth Error:', err);
-
-        return res.status(401).json({
-            message: 'Google authentication failed.'
-        });
+        console.error('Google Auth Callback Error:', err);
+        return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
     }
 };
 

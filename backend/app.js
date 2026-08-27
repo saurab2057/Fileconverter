@@ -18,15 +18,16 @@ import cors from 'cors';
 import { waf } from './middleware/waf.js';
 
 // 🔒 ROUTE IMPORTS
-import authRoutes       from './routes/authRoute.js';
-import userRoutes       from './routes/userRoute.js';
-import chatRoutes       from './routes/chatbotRoute.js';
-import conversionRoutes from './routes/conversionRoute.js';
-import historyRoutes    from './routes/historyRoute.js';
-import adminRoutes      from './routes/adminRoute.js';
-import aiRoutes         from './routes/aisummarizerRoute.js';
+import authRoutes        from './routes/authRoute.js';
+import userRoutes        from './routes/userRoute.js';
+import chatRoutes        from './routes/chatbotRoute.js';
+import conversionRoutes  from './routes/conversionRoute.js';
+import historyRoutes     from './routes/historyRoute.js';
+import adminRoutes       from './routes/adminRoute.js';
+import aiRoutes          from './routes/aisummarizerRoute.js';
 import compressionRoutes from './routes/compressionRoute.js';
-import passkeyRoutes    from './routes/passkeyRoute.js';
+import passkeyRoutes     from './routes/passkeyRoute.js';
+
 
 // 🔒 ERROR HANDLING
 import { AppError, globalErrorHandler } from './middleware/errorHandling.js';
@@ -108,8 +109,21 @@ app.use(express.urlencoded({ limit: '200kb', extended: true }));
 // OTHER MIDDLEWARE (run after body parsing)
 // ─────────────────────────────────────────────────────────────
 app.use(cookieParser());
-app.use(morgan('dev'));
+// ─────────────────────────────────────────────────────────────
+// SAFE REQUEST LOGGING
+//
+// Never log query strings.
+// OAuth codes, reset tokens, state values, session identifiers,
+// API keys, etc. can appear in URLs.
+// ─────────────────────────────────────────────────────────────
 
+morgan.token('safe-url', (req) => req.baseUrl + req.path);
+
+app.use(
+    morgan(
+        ':method :safe-url :status :res[content-length] - :response-time ms'
+    )
+);
 
 // ─────────────────────────────────────────────────────────────
 // HEALTH CHECK – before WAF
@@ -180,8 +194,6 @@ app.use('/api/history',   historyRoutes);
 app.use('/api/admin',     adminRoutes);
 app.use('/api/ai',        aiRoutes);
 app.use('/api/passkeys',  passkeyRoutes);
-
-
 // ─────────────────────────────────────────────────────────────
 // STATIC FRONTEND SERVING
 // ─────────────────────────────────────────────────────────────
