@@ -4,12 +4,13 @@
 // ENVIRONMENT VARIABLES (with validation fallbacks)
 // ─────────────────────────────────────────────────────────────
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://backend-kijk.onrender.com';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 export const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LfF_JkrAAAAADh5eTSImyZkNRgezC6UNdxzC0no';
 
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '720705456854-qetqatdv8oqjvn8jc1hnfov97eu0d3sg.apps.googleusercontent.com';
 
+export const VITE_GOOGLE_REDIRECT_URI= import.meta.env.VITE_GOOGLE_REDIRECT_URI || "http://localhost:5000/api/auth/google/callback";
 // ─────────────────────────────────────────────────────────────
 // APP CONSTANTS
 // ─────────────────────────────────────────────────────────────
