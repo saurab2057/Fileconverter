@@ -84,7 +84,7 @@ export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) =>
     const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
     };
@@ -163,7 +163,7 @@ export const googleAuthInit = (req, res) => {
     cookieOptions: {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'none',
       maxAge: 2 * 60 * 1000,
       path: '/api/auth/google',
     },
@@ -172,7 +172,7 @@ export const googleAuthInit = (req, res) => {
   res.cookie('oauth_state', state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'none',
     maxAge: 2 * 60 * 1000,
     path: '/api/auth/google',
   });
@@ -218,7 +218,7 @@ export const googleAuthCallback = async (req, res) => {
   const stateCookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'none',
     path: '/api/auth/google',
   };
 
