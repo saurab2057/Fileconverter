@@ -194,19 +194,6 @@ app.use('/api/history',   historyRoutes);
 app.use('/api/admin',     adminRoutes);
 app.use('/api/ai',        aiRoutes);
 app.use('/api/passkeys',  passkeyRoutes);
-// ─────────────────────────────────────────────────────────────
-// ROUTE HANDLERS
-// ─────────────────────────────────────────────────────────────
-app.use('/api/auth',     authRoutes);
-app.use('/api/user',     userRoutes);
-app.use('/api/chat',     chatRoutes);
-app.use('/api/convert',  conversionRoutes);
-app.use('/api/compress', compressionRoutes);
-app.use('/api/history',  historyRoutes);
-app.use('/api/admin',    adminRoutes);
-app.use('/api/ai',       aiRoutes);
-app.use('/api/passkeys', passkeyRoutes);
-
 
 // ─────────────────────────────────────────────────────────────
 // 404 CATCH-ALL HANDLERS (SEPARATE FRONTEND & BACKEND ARCHITECTURE)
