@@ -175,6 +175,21 @@ export const googleAuthInit = (req, res) => {
 //     googleAuthInit, before doing anything else. Prevents login CSRF.
 // ─────────────────────────────────────────────────────────────
 export const googleAuthCallback = async (req, res) => {
+
+    // 🔍 DEBUG BLOCK: Add this temporarily
+    console.log('--- 🔍 GOOGLE CALLBACK DEBUG ---');
+    console.log('1. Env Vars Loaded:', { 
+        hasClientId: !!process.env.GOOGLE_CLIENT_ID, 
+        hasSecret: !!process.env.GOOGLE_CLIENT_SECRET, 
+        hasRedirect: !!process.env.GOOGLE_REDIRECT_URI 
+    });
+
+    console.log('2. Cookie Parser Working:', !!req.cookies);
+    console.log('3. State from URL:', req.query.state);
+    console.log('4. State from Cookie:', req.cookies?.oauth_state);
+    console.log('------------------------------');
+    // 🔍 END DEBUG BLOCK
+    
     const { code, state, error: googleError } = req.query;
     const frontendUrl = process.env.FRONTEND_URL;
     const stateCookieOptions = {
