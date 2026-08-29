@@ -195,62 +195,39 @@ app.use('/api/admin',     adminRoutes);
 app.use('/api/ai',        aiRoutes);
 app.use('/api/passkeys',  passkeyRoutes);
 // ─────────────────────────────────────────────────────────────
-// STATIC FRONTEND SERVING
+// ROUTE HANDLERS
 // ─────────────────────────────────────────────────────────────
-//
-// PURPOSE:
-// Express serves the already-built React frontend files
-// (index.html, JavaScript bundles, CSS, images, etc.).
-//
-// USE THIS WHEN:
-// - Backend and frontend are deployed together on the same server.
-// - Express is responsible for serving the React application.
-// - Example deployment:
-//       User → Express/Node.js → React build + API routes
-//
-// DO NOT USE THIS WHEN:
-// - Frontend is deployed separately using services like:
-//       Vercel, Netlify, Cloudflare Pages, etc.
-// - Backend is only responsible for API endpoints.
-// - Example deployment:
-//       User → Vercel (React frontend)
-//       User → Render (Express API)
-//
-// In a separate frontend/backend deployment, serving React files
-// from Express is unnecessary because the frontend host already
-// handles static files and CDN caching.
-//
-// CACHE CONTROL:
-// HTML files are never cached because index.html contains references
-// to the latest hashed JavaScript/CSS bundles. This ensures users
-// receive the newest application version after deployment.
-//
-// Static assets (JS, CSS, images) can safely be cached because
-// Vite generates unique hashed filenames whenever content changes.
-// ─────────────────────────────────────────────────────────────
-
-//app.use(express.static(path.join(__dirname, '../frontend/build'), {
-//    setHeaders: (res, filePath) => {
-//        if (filePath.endsWith('.html')) {
-//            res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-//        }
-//    },
-//}));
+app.use('/api/auth',     authRoutes);
+app.use('/api/user',     userRoutes);
+app.use('/api/chat',     chatRoutes);
+app.use('/api/convert',  conversionRoutes);
+app.use('/api/compress', compressionRoutes);
+app.use('/api/history',  historyRoutes);
+app.use('/api/admin',    adminRoutes);
+app.use('/api/ai',       aiRoutes);
+app.use('/api/passkeys', passkeyRoutes);
 
 
 // ─────────────────────────────────────────────────────────────
-// 404 HANDLER – unknown API routes
+// 404 CATCH-ALL HANDLERS (SEPARATE FRONTEND & BACKEND ARCHITECTURE)
+//
+// Since the React frontend is hosted separately on Vercel, this Express 
+// server on Render operates purely as a headless REST API.
+//
+// - Static file serving (`express.static`) and React `index.html` delivery
+//   are removed because Vercel handles all asset delivery and CDN caching.
+// - Route matching uses dual-pattern arrays `['/path/*', '/path/{*splat}']`
+//   to ensure smooth execution across both Express v4 and Express v5.
 // ─────────────────────────────────────────────────────────────
-app.all('/api/*', (req, res, next) => {
+
+// 1. Unmatched API Endpoints: Catches invalid routes under `/api/...`
+app.all(['/api/*', '/api/{*splat}'], (req, res, next) => {
     next(new AppError(`API route not found: ${req.originalUrl}`, 404));
 });
 
-
-// ─────────────────────────────────────────────────────────────
-// REACT CATCH‑ALL
-// ─────────────────────────────────────────────────────────────
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/build', 'index.html'));
+// 2. Global Unmatched Routes: Catches any non-API traffic hitting the Render server directly
+app.all(['*', '/{*splat}'], (req, res, next) => {
+    next(new AppError(`Route not found on API server: ${req.originalUrl}`, 404));
 });
 
 
