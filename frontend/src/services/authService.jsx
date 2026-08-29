@@ -37,10 +37,13 @@ export const authService = {
    * "Continue with Google".
    * @returns {Promise} - { state }
    */
-  getGoogleOauthState: async () => {
-    const { data } = await apiClient.get('/api/auth/google/init');
-    return data;
-  },
+// In authService.js
+export const getGoogleOauthState = async () => {
+  const response = await axios.get('/api/auth/google/init', {
+    withCredentials: true,  // ✅ THIS IS THE KEY
+  });
+  return response.data;
+};
 
   /**
    * Send forgot password email.
