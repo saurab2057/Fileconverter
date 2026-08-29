@@ -9,7 +9,6 @@ import cookieParser from 'cookie-parser';
 const allowedOrigins = [
     'http://localhost:5173', // Vite dev server
     'http://localhost:4173', // Vite preview server
-    'https://fileconverter-f349y81ta-saurabs-projects-5db97c80.vercel.app',
     'https://fileconverter-mu.vercel.app',
     process.env.FRONTEND_URL // deployed frontend
 ].filter(Boolean);
@@ -25,7 +24,7 @@ const corsOptions = {
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // allowed HTTP verbs
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'], // headers the client is allowed to send
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie','X-Request-ID'], // headers the client is allowed to send
     credentials: true, // allow cookies/auth headers to be sent cross-origin
 };
 
@@ -77,6 +76,7 @@ const helmetOptions = {
                 "https://www.googleapis.com",  // Google API calls (e.g. userinfo)
                 "https://www.google.com",   // reCAPTCHA v3 runtime API calls
                 "https://api.resend.com", // transactional email API (called from client, if any)
+                "https://backend-kijk.onrender.com",
             ],
 
             fontSrc: [
