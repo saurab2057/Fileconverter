@@ -1,9 +1,18 @@
 // src/services/authService.js
+
 import apiClient from '@/lib/api';
 
+/**
+ * AuthService – handles all authentication-related API calls.
+ * All methods use the pre-configured `apiClient` which:
+ *   - Has baseURL set to the backend (e.g., https://backend-kijk.onrender.com)
+ *   - Includes credentials (withCredentials: true) for cross-domain cookie handling
+ */
 export const authService = {
   /**
    * Login with email and password.
+   * @param {Object} credentials - { email, password, recaptchaToken }
+   * @returns {Promise} - { accessToken, user }
    */
   login: async (credentials) => {
     const { data } = await apiClient.post('/api/auth/login', {
@@ -16,6 +25,8 @@ export const authService = {
 
   /**
    * Register a new user.
+   * @param {Object} userData - { name, email, password, confirmPassword, recaptchaToken }
+   * @returns {Promise} - { message }
    */
   signup: async (userData) => {
     const { data } = await apiClient.post('/api/auth/signup', {
@@ -29,21 +40,28 @@ export const authService = {
   },
 
   /**
-   * Fetch a one-time CSRF `state` token before starting Google OAuth.
-   * Backend stores the matching value in an httpOnly cookie
-   * (see authController.js googleAuthInit) and verifies it on
-   * /google/callback before completing the login. Call this on
-   * mount of the Login/Signup page, before the user can click
-   * "Continue with Google".
-   * @returns {Promise} - { state }
+   * Fetch a one-time CSRF `state` token for Google OAuth.
+   *
+   * WHY THIS IS CRITICAL:
+   *   - The backend sets an `oauth_state` httpOnly cookie when this endpoint is called.
+   *   - That cookie must be stored on the SAME DOMAIN as your backend
+   *     (because Google will redirect directly to your backend's callback URL).
+   *   - Using `apiClient` ensures the request goes directly to the backend domain
+   *     (not through a frontend proxy), so the cookie is set on the backend domain.
+   *
+   * Without this, the cookie would be set on the frontend domain, and the
+   * callback request (which goes to the backend domain) would not receive it,
+   * causing state mismatch errors.
+   *
+   * @returns {Promise<{ state: string }>}
    */
-export const getGoogleOauthState = async () => {
-  const response = await apiClient.get('/api/auth/google/init');
-  return response.data;
-};
+  getGoogleOauthState: async () => {
+    const { data } = await apiClient.get('/api/auth/google/init');
+    return data;
+  },
 
   /**
-   * Send forgot password email.
+   * Request a password reset email.
    * @param {string} email - User's registered email
    * @param {string} recaptchaToken - reCAPTCHA token
    * @returns {Promise} - { message }
@@ -57,8 +75,8 @@ export const getGoogleOauthState = async () => {
   },
 
   /**
-   * Validate password reset token.
-   * @param {string} token - Reset token from email link
+   * Validate a password reset token (sent via email link).
+   * @param {string} token - The reset token from the URL
    * @returns {Promise} - { valid, redirectUrl }
    */
   validateResetToken: async (token) => {
@@ -67,7 +85,7 @@ export const getGoogleOauthState = async () => {
   },
 
   /**
-   * Reset password with new password.
+   * Reset password using the new password.
    * @param {string} newPassword - New password
    * @returns {Promise} - { message }
    */
@@ -77,7 +95,7 @@ export const getGoogleOauthState = async () => {
   },
 
   /**
-   * Refresh access token using http-only cookie.
+   * Refresh the access token using the httpOnly refresh token cookie.
    * @returns {Promise} - { accessToken, user }
    */
   refreshToken: async () => {
@@ -86,7 +104,7 @@ export const getGoogleOauthState = async () => {
   },
 
   /**
-   * Logout current session.
+   * Logout the current session (clears the refresh cookie).
    * @returns {Promise}
    */
   logout: async () => {
@@ -94,7 +112,7 @@ export const getGoogleOauthState = async () => {
   },
 
   /**
-   * Logout all devices.
+   * Logout all active devices (revokes all refresh tokens).
    * @returns {Promise}
    */
   logoutAll: async () => {
@@ -102,8 +120,8 @@ export const getGoogleOauthState = async () => {
   },
 
   /**
-   * Get active sessions.
-   * @returns {Promise} - { sessions }
+   * Get a list of all active sessions for the current user.
+   * @returns {Promise<{ sessions: Array }>}
    */
   getSessions: async () => {
     const { data } = await apiClient.get('/api/auth/sessions');
@@ -111,7 +129,7 @@ export const getGoogleOauthState = async () => {
   },
 
   /**
-   * Revoke a specific session.
+   * Revoke a specific session by its ID.
    * @param {string} sessionId - Session ID to revoke
    * @returns {Promise}
    */
@@ -120,8 +138,8 @@ export const getGoogleOauthState = async () => {
   },
 
   /**
-   * Change password (authenticated user).
-   * @param {Object} passwords - { currentPassword, newPassword }
+   * Change the password for the authenticated user.
+   * @param {Object} passwords - { currentPassword, newPassword, confirmNewPassword }
    * @returns {Promise} - { message, logoutRequired }
    */
   changePassword: async (passwords) => {
@@ -134,8 +152,9 @@ export const getGoogleOauthState = async () => {
   },
 
   /**
-   * Update user profile.
-   * @param {Object|FormData} payload - Profile data (can be FormData for file upload)
+   * Update user profile (e.g., name, avatar).
+   * Accepts either a plain object or FormData (for file uploads).
+   * @param {Object|FormData} payload - Profile data
    * @returns {Promise} - { message, user }
    */
   updateProfile: async (payload) => {
