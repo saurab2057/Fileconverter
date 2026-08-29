@@ -1,16 +1,17 @@
 // src/lib/constants.js
 
 // ─────────────────────────────────────────────────────────────
-// ENVIRONMENT VARIABLES (with validation fallbacks)
+// APPLICATION ENDPOINTS & CREDENTIALS
 // ─────────────────────────────────────────────────────────────
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://backend-kijk.onrender.com';
+export const API_BASE_URL = 'https://backend-kijk.onrender.com';
 
-export const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LfF_JkrAAAAADh5eTSImyZkNRgezC6UNdxzC0no';
+export const RECAPTCHA_SITE_KEY = '6LfF_JkrAAAAADh5eTSImyZkNRgezC6UNdxzC0no';
 
-export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '720705456854-qetqatdv8oqjvn8jc1hnfov97eu0d3sg.apps.googleusercontent.com';
+export const GOOGLE_CLIENT_ID = '720705456854-qetqatdv8oqjvn8jc1hnfov97eu0d3sg.apps.googleusercontent.com';
 
-export const VITE_GOOGLE_REDIRECT_URI= import.meta.env.VITE_GOOGLE_REDIRECT_URI || "https://backend-kijk.onrender.com/api/auth/google/callback";
+export const GOOGLE_REDIRECT_URI = 'https://backend-kijk.onrender.com/api/auth/google/callback';
+
 // ─────────────────────────────────────────────────────────────
 // APP CONSTANTS
 // ─────────────────────────────────────────────────────────────
@@ -30,16 +31,3 @@ export const STORAGE_KEYS = {
   CHATBOT_HAS_OPENED: 'chatbot_hasOpened',
   CHATBOT_TOOLTIP_DISMISSED: 'chatbot_tooltipDismissed',
 };
-
-// ─────────────────────────────────────────────────────────────
-// DEVELOPMENT WARNINGS (helpful during local development)
-// ─────────────────────────────────────────────────────────────
-
-if (import.meta.env.DEV) {
-  if (!import.meta.env.VITE_API_BASE_URL) {
-    console.warn('⚠️ VITE_API_BASE_URL not set, using default:', API_BASE_URL);
-  }
-  if (!import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
-    console.warn('⚠️ VITE_RECAPTCHA_SITE_KEY not set, using hardcoded fallback.');
-  }
-}
