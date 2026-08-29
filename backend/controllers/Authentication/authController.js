@@ -176,17 +176,15 @@ export const googleAuthInit = (req, res) => {
 // ─────────────────────────────────────────────────────────────
 export const googleAuthCallback = async (req, res) => {
 
-    // 🔍 DEBUG BLOCK: Add this temporarily
-    console.log('--- 🔍 GOOGLE CALLBACK DEBUG ---');
-    console.log('1. Env Vars Loaded:', { 
-        hasClientId: !!process.env.GOOGLE_CLIENT_ID, 
-        hasSecret: !!process.env.GOOGLE_CLIENT_SECRET, 
-        hasRedirect: !!process.env.GOOGLE_REDIRECT_URI 
-    });
+    // 🚨 NUCLEAR DEBUG: This will tell us EXACTLY why it's failing
+    console.log('🚨 🚨 🚨 GOOGLE CALLBACK REACHED 🚨 🚨 🚨');
+    console.log('1. NODE_ENV:', process.env.NODE_ENV);
+    console.log('2. req.cookies:', req.cookies);
+    console.log('3. Query State:', req.query.state);
+    console.log('4. Query Code:', req.query.code ? 'PRESENT' : 'MISSING');
+    console.log('5. FRONTEND_URL:', process.env.FRONTEND_URL);
+    console.log('🚨 🚨 🚨 END DEBUG 🚨 🚨 🚨');
 
-    console.log('2. Cookie Parser Working:', !!req.cookies);
-    console.log('3. State from URL:', req.query.state);
-    console.log('4. State from Cookie:', req.cookies?.oauth_state);
     console.log('------------------------------');
     // 🔍 END DEBUG BLOCK
     
