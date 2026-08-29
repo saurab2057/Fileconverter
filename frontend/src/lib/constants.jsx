@@ -10,7 +10,7 @@ export const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6L
 
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '720705456854-qetqatdv8oqjvn8jc1hnfov97eu0d3sg.apps.googleusercontent.com';
 
-export const VITE_GOOGLE_REDIRECT_URI= import.meta.env.VITE_GOOGLE_REDIRECT_URI || "http://localhost:5000/api/auth/google/callback";
+export const VITE_GOOGLE_REDIRECT_URI= import.meta.env.VITE_GOOGLE_REDIRECT_URI || "https://backend-kijk.onrender.com/api/auth/google/callback";
 // ─────────────────────────────────────────────────────────────
 // APP CONSTANTS
 // ─────────────────────────────────────────────────────────────
