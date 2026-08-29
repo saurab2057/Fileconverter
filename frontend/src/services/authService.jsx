@@ -37,11 +37,8 @@ export const authService = {
    * "Continue with Google".
    * @returns {Promise} - { state }
    */
-// In authService.js
 export const getGoogleOauthState = async () => {
-  const response = await axios.get('/api/auth/google/init', {
-    withCredentials: true,  // ✅ THIS IS THE KEY
-  });
+  const response = await apiClient.get('/api/auth/google/init');
   return response.data;
 };
 
