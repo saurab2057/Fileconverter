@@ -9,7 +9,7 @@ import { useGoogleLogin } from '@react-oauth/google';
 import { useAuth } from '@/lib/AuthContext';
 import { loginSchema } from '@/utils/validationSchemas';
 import { authService } from '@/services/authService';
-import { RECAPTCHA_SITE_KEY, VITE_GOOGLE_REDIRECT_URI } from '@/lib/constants';
+import { RECAPTCHA_SITE_KEY, GOOGLE_REDIRECT_URI } from '@/lib/constants';
 import { useToast } from '@/context/ToastContext';
 
 import LoadingAnimation from '@/components/ui/LoadingAnimation';
@@ -142,7 +142,7 @@ const LoginForm = () => {
   const googleLogin = useGoogleLogin({
     flow: 'auth-code',
     ux_mode: 'redirect',
-    redirect_uri: VITE_GOOGLE_REDIRECT_URI,
+    redirect_uri: GOOGLE_REDIRECT_URI,
     state: oauthState,
   });
 
