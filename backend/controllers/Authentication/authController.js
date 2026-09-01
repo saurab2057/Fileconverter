@@ -131,17 +131,27 @@ export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) =>
 //   the callback only completes for the same browser that started 
 //   the flow.
 // ─────────────────────────────────────────────────────────────
-export const googleAuthCallback = async (req, res) => {
-  const { code, state, error: googleError } = req.query;
-  const frontendUrl = process.env.FRONTEND_URL;
-  
-  const stateCookieOptions = {
+export const googleAuthInit = (req, res) => {
+  const state = crypto.randomBytes(32).toString('hex');
+
+  res.cookie('oauth_state', state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    path: '/api/auth/google',
-  };
+    maxAge: 3 * 60 * 1000, // Expires in 3 minutes
+    path: '/api/auth/google', // Scoped only to the auth routes
+  });
 
+  return res.json({ state });
+};
+// ─────────────────────────────────────────────────────────────
+// GOOGLE AUTH CALLBACK: googleAuthCallback
+//
+// GET /api/auth/google/callback
+// Google redirects here directly with ?code=...&state=... after
+// consent. Exchanges code for tokens, fetches user info, and 
+// either logs the user in or creates a new account.
+// ─────────────────────────────────────────────────────────────
   const expectedState = req.cookies.oauth_state;
   
   // 🔥 TARGETED DEBUG: Log exactly what we received to find the silent failure
