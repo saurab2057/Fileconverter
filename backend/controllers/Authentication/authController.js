@@ -131,33 +131,10 @@ export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) =>
 //   the callback only completes for the same browser that started 
 //   the flow.
 // ─────────────────────────────────────────────────────────────
-export const googleAuthInit = (req, res) => {
-  const state = crypto.randomBytes(32).toString('hex');
-
-  res.cookie('oauth_state', state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 2 * 60 * 1000, // Expires in 2 minutes
-    path: '/api/auth/google', // Scoped only to the auth routes
-  });
-
-  return res.json({ state });
-};
-
-// ─────────────────────────────────────────────────────────────
-// GOOGLE AUTH CALLBACK: googleAuthCallback
-//
-// GET /api/auth/google/callback
-// Google redirects here directly with ?code=...&state=... after
-// consent. Exchanges code for tokens, fetches user info, and 
-// either logs the user in or creates a new account.
-// ─────────────────────────────────────────────────────────────
 export const googleAuthCallback = async (req, res) => {
   const { code, state, error: googleError } = req.query;
   const frontendUrl = process.env.FRONTEND_URL;
   
-  // Cookie options used to clear the state cookie immediately after reading it
   const stateCookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -165,25 +142,38 @@ export const googleAuthCallback = async (req, res) => {
     path: '/api/auth/google',
   };
 
-  // 🔒 Verify state to prevent Login CSRF
   const expectedState = req.cookies.oauth_state;
-  res.clearCookie('oauth_state', stateCookieOptions); // Clear immediately to prevent replay
+  
+  // 🔥 TARGETED DEBUG: Log exactly what we received to find the silent failure
+  console.log('🔍 Google Callback Debug:', {
+    hasCode: !!code,
+    hasState: !!state,
+    hasExpectedState: !!expectedState,
+    stateMatch: state === expectedState,
+    hasGoogleError: !!googleError,
+    cookiesReceived: Object.keys(req.cookies)
+  });
+
+  res.clearCookie('oauth_state', stateCookieOptions);
 
   if (!state || !expectedState || state !== expectedState) {
+    console.error('❌ Google Auth Failed: State mismatch or missing cookie.');
+    console.error('   Provided State:', state);
+    console.error('   Expected State:', expectedState);
     return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
   }
 
-  // Handle user cancellation or missing code from Google
   if (googleError) {
+    console.error('❌ Google Auth Failed: Google returned an error:', googleError);
     return res.redirect(`${frontendUrl}/login?error=google_auth_cancelled`);
   }
   
   if (!code) {
+    console.error('❌ Google Auth Failed: No authorization code received in query.');
     return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
   }
 
   try {
-    // Exchange authorization code for Google access token
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -197,42 +187,41 @@ export const googleAuthCallback = async (req, res) => {
     });
 
     if (!tokenResponse.ok) {
+      const errText = await tokenResponse.text();
+      console.error('❌ Google Token Exchange Failed:', tokenResponse.status, errText);
       return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
     }
 
     const { access_token } = await tokenResponse.json();
 
-    // Fetch user profile from Google using the access token
     const googleResponse = await fetch(
       'https://www.googleapis.com/oauth2/v3/userinfo',
       { method: 'GET', headers: { Authorization: `Bearer ${access_token}` } }
     );
 
     if (!googleResponse.ok) {
+      console.error('❌ Google Userinfo Request Failed:', googleResponse.status);
       return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
     }
 
     const payload = await googleResponse.json();
 
     if (!payload || !payload.email) {
+      console.error('❌ Google Payload Missing Email:', payload);
       return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
     }
 
     const { name, email, picture, email_verified } = payload;
-    
-    // Normalize email to guarantee match with schema's lowercase: true
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Enforce verified emails only
     if (email_verified !== true) {
+      console.error('❌ Google Auth Failed: Email not verified by Google.');
       return res.redirect(`${frontendUrl}/login?error=google_email_unverified`);
     }
 
-    // Check if user already exists in our database
     let user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
-      // Create new Google user
       user = new User({
         name: name || 'Google User',
         email: normalizedEmail,
@@ -241,30 +230,28 @@ export const googleAuthCallback = async (req, res) => {
       });
       await user.save();
     } else if (user.authProvider === 'email') {
-      // Prevent account takeover: block Google login if account was created via email/password
+      console.error('❌ Google Auth Failed: Email provider conflict.');
       return res.redirect(`${frontendUrl}/login?error=email_provider_conflict`);
     } else {
-      // Existing Google user: update profile picture if it changed
       if (picture && user.profilePictureUrl !== picture) {
         user.profilePictureUrl = picture;
         await user.save();
       }
     }
 
-    // Check if account is banned
     if (user.status !== 'active') {
+      console.error('❌ Google Auth Failed: Account is banned.');
       return res.redirect(`${frontendUrl}/login?error=account_banned`);
     }
 
-    // Save IP/Device metadata
     await saveUserMetadata(req, user._id);
 
-    // Issue session tokens and redirect to frontend
     return handleLoginSuccess(res, user, req, {
       redirectTo: user.role === 'admin' ? `${frontendUrl}/admin` : frontendUrl,
     });
 
   } catch (err) {
+    console.error('💥 Google Auth Callback CRASH:', err.message);
     return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
   }
 };
