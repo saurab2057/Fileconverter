@@ -35,24 +35,18 @@ const FileUploader = ({
     e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      // BUG FIX: snapshot to plain Array immediately — dataTransfer.files
-      // is only valid during the drop event and becomes empty afterward.
       handleFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleFileInput = (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      // BUG FIX: convert FileList → plain Array BEFORE resetting the input.
-      // FileList is a live DOM object; e.target.value = null wipes it instantly,
-      // so any parent holding a reference to the old FileList gets an empty list.
       const snapshotted = Array.from(e.target.files);
-      e.target.value = null; // reset so the same file can be picked again
+      e.target.value = null; 
       handleFiles(snapshotted);
     }
   };
 
-  // fileList is always a plain Array here (never a raw FileList)
   const handleFiles = (fileArray) => {
     if (onFilesSelected && fileArray.length > 0) {
       onFilesSelected(fileArray);
@@ -61,10 +55,11 @@ const FileUploader = ({
 
   const handleSourceSelect = (sourceId) => {
     setIsDropdownOpen(false);
+    
+    // Only trigger action for 'device'. 
+    // All other options simply close the dropdown and do nothing else.
     if (sourceId === 'device') {
       document.getElementById('file-upload-input').click();
-    } else {
-      console.log(`Selected source: ${sourceId}`);
     }
   };
 
@@ -74,12 +69,10 @@ const FileUploader = ({
 
   return (
     <div className={`max-w-6xl mx-auto ${className}`}>
-      {/* Subtitle */}
       <div className="text-center mb-8">
         <p className="text-xl text-gray-600 dark:text-gray-300 transition-colors duration-300">{subtitle}</p>
       </div>
 
-      {/* Main Upload Area */}
       <div className="relative">
         <div
           className={`bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-2xl border-2 border-dashed transition-all duration-300 min-h-[400px] p-12 ${dragActive
@@ -91,7 +84,6 @@ const FileUploader = ({
           onDragOver={handleDrag}
           onDrop={handleDrop}
         >
-          {/* Hidden file input */}
           <input
             type="file"
             multiple
@@ -101,10 +93,7 @@ const FileUploader = ({
             id="file-upload-input"
           />
 
-          {/* Center Content */}
           <div className="h-full flex flex-col items-center justify-center text-center mt-8">
-
-            {/* Dropdown Button */}
             <div className="relative mb-6">
               <button
                 onClick={() => setIsDropdownOpen(prev => !prev)}
@@ -132,14 +121,12 @@ const FileUploader = ({
               )}
             </div>
 
-            {/* Drag and Drop Text */}
             <div className="mb-6">
               <p className="text-gray-600 dark:text-gray-400 text-lg font-medium">
                 or drag and drop files here
               </p>
             </div>
 
-            {/* File size & terms */}
             <p className="text-gray-500 dark:text-gray-400 text-sm">
               Total size of single file or multiple files combined must be under{' '}
               <span className="text-blue-600 dark:text-blue-400 font-medium">100 MB</span>.
