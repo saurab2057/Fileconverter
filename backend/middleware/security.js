@@ -1,112 +1,114 @@
-// middleware/security.js
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 
-
 // ─────────────────────────────────────────────────────────────
-// CORS
+// CORS CONFIGURATION
 // ─────────────────────────────────────────────────────────────
-const allowedOrigins = [
-    'http://localhost:5173', // Vite dev server
-    'http://localhost:4173', // Vite preview server
-    'https://fileconverter-mu.vercel.app',
-    process.env.FRONTEND_URL // deployed frontend
-].filter(Boolean);
+const baseOrigins = [
+  'http://localhost:5173',       // Vite dev server
+  'http://localhost:4173',       // Vite preview server
+  'https://fileconverter-mu.vercel.app' // Known production frontend
+];
 
 const corsOptions = {
-    origin: (origin, callback) => {
-        // allow no-origin requests (server-to-server, curl, mobile apps)
-        // and requests from whitelisted origins only
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('This origin is not allowed by the CORS policy.'));
-        }
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // allowed HTTP verbs
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie','X-Request-ID'], // headers the client is allowed to send
-    credentials: true, // allow cookies/auth headers to be sent cross-origin
+  origin: (origin, callback) => {
+    // 1. Allow requests with no origin (Postman, curl, mobile apps, server-to-server)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // 2. Dynamically build allowed list at request time to ensure env vars are fully loaded
+    const envOrigin = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim().replace(/\/$/, '') : null;
+    const allowedOrigins = [...baseOrigins, envOrigin].filter(Boolean).map(url => url.replace(/\/$/, ''));
+
+    // 3. Normalize the incoming origin for exact matching
+    const cleanOrigin = origin.trim().replace(/\/$/, '');
+
+    // 4. Validate
+    if (allowedOrigins.includes(cleanOrigin)) {
+      callback(null, true);
+    } else {
+      // 🔥 DEBUG: Log exactly what failed to instantly diagnose Render env issues
+      console.error('🚨 CORS REJECTED:');
+      console.error(`  - Requested Origin: "${cleanOrigin}"`);
+      console.error(`  - FRONTEND_URL Env: "${envOrigin}"`);
+      console.error(`  - Allowed List:`, allowedOrigins);
+      
+      callback(new Error('This origin is not allowed by the CORS policy.'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Request-ID'],
+  credentials: true, // Required for httpOnly cookies
 };
 
-
 // ─────────────────────────────────────────────────────────────
-// HELMET / CSP
-// Note: the server-side siteverify call (recaptchaMiddleware.js) is
-// server-to-server via axios — it does not need a CSP entry.
+// HELMET / CSP CONFIGURATION
 // ─────────────────────────────────────────────────────────────
 const helmetOptions = {
-    crossOriginEmbedderPolicy: false, // disabled — would block some third-party embeds (Google, Cloudinary) otherwise
-    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }, // needed so Google OAuth popup flow can communicate back
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"], // fallback: only allow same-origin by default
-
-            scriptSrc: [
-                "'self'",
-                "https://accounts.google.com/gsi/client", // Google Identity Services (login button/script)
-                "https://apis.google.com",                // Google API client library
-                "https://www.google.com",   // reCAPTCHA v3 entry script
-                "https://www.gstatic.com",  // reCAPTCHA v3 secondary scripts
-            ],
-
-            styleSrc: [
-                "'self'",
-                "https://accounts.google.com", // styles injected by Google login widget
-                "https://fonts.googleapis.com", // Google Fonts stylesheet
-            ],
-
-            imgSrc: [
-                "'self'",
-                "data:", // inline/base64 images
-                "https://*.googleusercontent.com", // Google user profile pictures
-                "https://lh3.googleusercontent.com", // Google profile pic CDN (variant)
-                "https://lh4.googleusercontent.com", // Google profile pic CDN (variant)
-                "https://res.cloudinary.com", // app's image hosting/CDN
-            ],
-
-            frameSrc: [
-                "'self'",
-                "https://accounts.google.com", // Google login popup/iframe
-                "https://www.google.com",   // reCAPTCHA v3 badge iframe
-            ],
-
-            connectSrc: [
-                "'self'",
-                "https://accounts.google.com", // OAuth token exchange calls
-                "https://www.googleapis.com",  // Google API calls (e.g. userinfo)
-                "https://www.google.com",   // reCAPTCHA v3 runtime API calls
-                "https://api.resend.com", // transactional email API (called from client, if any)
-                "https://backend-kijk.onrender.com",
-            ],
-
-            fontSrc: [
-                "'self'",
-                "https://fonts.gstatic.com", // Google Fonts font files
-            ],
-
-            baseUri: ["'self'"],   // prevents <base> tag hijacking (protects relative URLs)
-            formAction: ["'self'"], // forms can only submit to same origin
-            objectSrc: ["'none'"], // blocks <object>/<embed>/<applet> — legacy plugin vectors
-            upgradeInsecureRequests: [], // auto-upgrade http:// requests to https://
-
-            // 🔒 PREVENT CLICKJACKING
-            // Blocks all attempts to embed your site in iframes.
-            frameAncestors: ["'none'"],
-        },
+  crossOriginEmbedderPolicy: false, // Required for some third-party embeds
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }, // Required for Google OAuth popups
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        "https://accounts.google.com/gsi/client",
+        "https://apis.google.com",
+        "https://www.google.com",
+        "https://www.gstatic.com",
+      ],
+      styleSrc: [
+        "'self'",
+        "https://accounts.google.com",
+        "https://fonts.googleapis.com",
+      ],
+      imgSrc: [
+        "'self'",
+        "data:",
+        "https://*.googleusercontent.com",
+        "https://lh3.googleusercontent.com",
+        "https://lh4.googleusercontent.com",
+        "https://res.cloudinary.com",
+      ],
+      frameSrc: [
+        "'self'",
+        "https://accounts.google.com",
+        "https://www.google.com",
+      ],
+      connectSrc: [
+        "'self'",
+        "https://accounts.google.com",
+        "https://www.googleapis.com",
+        "https://www.google.com",
+        "https://api.resend.com",
+        "https://backend-kijk.onrender.com",
+      ],
+      fontSrc: [
+        "'self'",
+        "https://fonts.gstatic.com",
+      ],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+      frameAncestors: ["'none'"], // Prevents clickjacking
     },
-    hsts: {
-        maxAge: process.env.NODE_ENV === 'production' ? 63072000 : 0, // 2 years — force HTTPS for this long once seen
-        includeSubDomains: true, // apply HSTS to all subdomains too
-        preload: true, // eligible for browser HSTS preload lists
-    },
-    noSniff: true,
-    // Note: Helmet sets X-Content-Type-Options: nosniff by default.
+  },
+  hsts: {
+    maxAge: process.env.NODE_ENV === 'production' ? 63072000 : 0,
+    includeSubDomains: true,
+    preload: true,
+  },
+  noSniff: true,
 };
 
-
+// ─────────────────────────────────────────────────────────────
+// EXPORTS (Matches original structure for app.js compatibility)
+// ─────────────────────────────────────────────────────────────
 export {
-    corsOptions,
-    helmetOptions,
-    cookieParser,
-    morgan,
+  corsOptions,
+  helmetOptions,
+  cookieParser,
+  morgan,
 };
