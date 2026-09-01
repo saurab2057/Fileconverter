@@ -1,42 +1,26 @@
 // src/hooks/useGoogleAuth.js
 import { useState, useCallback } from 'react';
-import { authService } from '@/services/authService';
-import { GOOGLE_REDIRECT_URI, GOOGLE_CLIENT_ID } from '@/lib/constants';
-import { useToast } from '@/context/ToastContext';
 
+/**
+ * Kicks off Google OAuth with a real top-level navigation.
+ *
+ * IMPORTANT: this must NOT fetch the backend first and then navigate.
+ * Fetching /api/auth/google/init as a background XHR sets the
+ * oauth_state cookie in a cross-site (third-party) context, which
+ * gets blocked or wiped by the browser before the callback ever
+ * sees it. Navigating the browser directly to the backend route
+ * lets the backend set the cookie during an actual top-level
+ * redirect chain, and build + redirect to the Google URL itself.
+ */
 export const useGoogleAuth = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const toast = useToast();
 
-  // The function to attach to the button's onClick
-  const handleGoogleClick = useCallback(async () => {
+  const handleGoogleClick = useCallback(() => {
     setIsLoading(true);
-    try {
-      // 1. Fetch the CSRF state token ONLY when the user clicks the button
-      const { state } = await authService.getGoogleOauthState();
-      
-      // 2. Manually construct the Google OAuth URL with the fresh state
-      // This bypasses the @react-oauth/google library's broken redirect mode
-      const scope = encodeURIComponent('openid email profile');
-      const googleAuthUrl = 
-        `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${GOOGLE_CLIENT_ID}&` +
-        `redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}&` +
-        `response_type=code&` +
-        `scope=${scope}&` +
-        `state=${state}&` +
-        `access_type=offline&` +
-        `prompt=select_account`;
-
-      // 3. Redirect the browser directly to Google
-      window.location.href = googleAuthUrl;
-      
-    } catch (err) {
-      console.error('[Google Auth] Failed to initialize:', err);
-      toast.error('Could not initialize Google login. Please try again.');
-      setIsLoading(false);
-    }
-  }, [toast]);
+    window.location.href = `${import.meta.env.VITE_API_BASE_URL}/api/auth/google/init`;
+  }, []);
 
   return { handleGoogleClick, isLoading };
 };
+
+export default useGoogleAuth;
