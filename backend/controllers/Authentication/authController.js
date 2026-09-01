@@ -115,9 +115,9 @@ export const googleAuthInit = (req, res) => {
   const cookieOptions = {
     httpOnly: true,
     secure: true,
-    sameSite: 'lax',
+    sameSite: 'none',
     maxAge: 2 * 60 * 1000,
-    path: '/api/auth',
+    path: '/',
   };
 
   console.log('🔍 [DEBUG] googleAuthInit: Setting oauth_state cookie with options:', cookieOptions);
@@ -146,8 +146,8 @@ export const googleAuthCallback = async (req, res) => {
   const stateCookieOptions = {
     httpOnly: true,
     secure: true,
-    sameSite: 'lax',
-    path: '/api/auth',
+    sameSite: 'none',
+    path: '/',
   };
 
   const expectedState = req.cookies.oauth_state;
