@@ -107,25 +107,25 @@ export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) =>
 // GOOGLE AUTH INIT: googleAuthInit
 // ─────────────────────────────────────────────────────────────
 export const googleAuthInit = (req, res) => {
-  console.log('🔍 [DEBUG] googleAuthInit: Request received');
-  
   const state = crypto.randomBytes(32).toString('hex');
-  console.log(`🔍 [DEBUG] googleAuthInit: Generated state (preview): ${state.substring(0, 8)}...`);
-
   const cookieOptions = {
     httpOnly: true,
-    secure: true,
-    sameSite: 'none',
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 2 * 60 * 1000,
     path: '/',
   };
-
-  console.log('🔍 [DEBUG] googleAuthInit: Setting oauth_state cookie with options:', cookieOptions);
-
   res.cookie('oauth_state', state, cookieOptions);
 
-  console.log('✅ [DEBUG] googleAuthInit: Cookie set successfully, returning state to client');
-  return res.json({ state });
+  const scope = encodeURIComponent('openid email profile');
+  const googleAuthUrl =
+    `https://accounts.google.com/o/oauth2/v2/auth?` +
+    `client_id=${process.env.GOOGLE_CLIENT_ID}&` +
+    `redirect_uri=${encodeURIComponent(process.env.GOOGLE_REDIRECT_URI)}&` +
+    `response_type=code&scope=${scope}&state=${state}&` +
+    `access_type=offline&prompt=select_account`;
+
+  return res.redirect(googleAuthUrl);
 };
 
 // ─────────────────────────────────────────────────────────────
