@@ -1,16 +1,15 @@
-// src/features/authpages/Signup.jsx
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Chrome } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useGoogleLogin } from '@react-oauth/google';
 
 import { useAuth } from '@/lib/AuthContext';
 import { signupSchema } from '@/utils/validationSchemas';
 import { authService } from '@/services/authService';
-import { RECAPTCHA_SITE_KEY, GOOGLE_REDIRECT_URI } from '@/lib/constants';
+import { RECAPTCHA_SITE_KEY } from '@/lib/constants';
 import { useToast } from '@/context/ToastContext';
+import { useGoogleAuth } from '@/hooks/useGoogleAuth'; // ✅ NEW HOOK
 
 // ─────────────────────────────────────────────────────────────
 // Maps the ?error=... query param the backend redirects back
@@ -31,10 +30,13 @@ const SignUpForm = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [oauthState, setOauthState] = useState(null);
+  
   const navigate = useNavigate();
   const { login } = useAuth();
   const toast = useToast();
+
+  // ✅ NEW: Google Auth Hook
+  const { handleGoogleClick, isLoading: isGoogleLoading } = useGoogleAuth();
 
   // 🔽 reCAPTCHA script loader
   useEffect(() => {
@@ -45,20 +47,6 @@ const SignUpForm = () => {
       script.defer = true;
       document.body.appendChild(script);
     }
-  }, []);
-
-  // ─────────────────────────────────────────────────────────
-  // Fetch the CSRF `state` token before the user can click
-  // "Continue with Google". The backend stores the matching
-  // value in an httpOnly cookie (see authController.js
-  // googleAuthInit) and verifies it on the callback — this
-  // prevents an attacker's OAuth code being replayed against
-  // a victim's browser (login CSRF).
-  // ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    authService.getGoogleOauthState()
-      .then((data) => setOauthState(data.state))
-      .catch(() => setOauthState(null));
   }, []);
 
   // ─────────────────────────────────────────────────────────
@@ -108,36 +96,6 @@ const SignUpForm = () => {
       setIsSubmitting(false);
     }
   };
-
-  // ─────────────────────────────────────────────────────────
-  // Google OAuth — redirect flow (no popup).
-  //
-  // flow: 'auth-code'   → we get an authorization code, not a
-  //                        client-side access token.
-  // ux_mode: 'redirect' → clicking the button navigates the
-  //                        whole tab to Google's consent screen.
-  //                        No window.open() is ever called, so
-  //                        ad-blockers / popup-blockers have
-  //                        nothing to block.
-  // redirect_uri        → points at the BACKEND callback route
-  //                        (GET /api/auth/google/callback), which
-  //                        exchanges the code, creates/logs into
-  //                        the account, sets the session cookie,
-  //                        and redirects back into the app.
-  // state                → CSRF token fetched from /google/init above.
-  //                        Google echoes it back on the callback URL;
-  //                        the backend checks it against the cookie
-  //                        it set, before doing anything else.
-  //
-  // There is no onSuccess/onError here — the entire flow completes
-  // server-side; this page only handles the ?error=... case above.
-  // ─────────────────────────────────────────────────────────
-  const googleLogin = useGoogleLogin({
-    flow: 'auth-code',
-    ux_mode: 'redirect',
-    redirect_uri: GOOGLE_REDIRECT_URI,
-    state: oauthState,
-  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-emerald-900 flex items-center justify-center p-4">
@@ -257,12 +215,18 @@ const SignUpForm = () => {
               {/* Google Button */}
               <button
                 type="button"
-                onClick={() => googleLogin()}
-                disabled={!oauthState}
+                onClick={handleGoogleClick}
+                disabled={isGoogleLoading}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl text-gray-300 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Chrome className="w-4 h-4" />
-                <span className="text-sm font-medium">Continue with Google</span>
+                {isGoogleLoading ? (
+                  <span className="text-sm font-medium">Initializing...</span>
+                ) : (
+                  <>
+                    <Chrome className="w-4 h-4" />
+                    <span className="text-sm font-medium">Continue with Google</span>
+                  </>
+                )}
               </button>
 
               {/* reCAPTCHA Notice */}
