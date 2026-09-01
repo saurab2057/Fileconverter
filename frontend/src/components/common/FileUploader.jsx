@@ -1,8 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { FileText, ChevronDown, ChevronUp, Folder, Cloud, Link, HardDrive, Database } from 'lucide-react';
-
-const DROPBOX_SCRIPT_ID = 'dropboxjs';
-const DROPBOX_SCRIPT_SRC = 'https://www.dropbox.com/static/api/2/dropins.js';
 
 const FileUploader = ({
   acceptedFormats = [],
@@ -10,9 +7,6 @@ const FileUploader = ({
   subtitle = "Easily convert files from one format to another, online.",
   maxFileSize = "100MB",
   onFilesSelected,
-  // Only the public "App key" from your Dropbox App Console — never your
-  // app secret or a generated access token, which must stay server-side.
-  dropboxAppKey = import.meta.env.VITE_DROPBOX_APP_KEY || 'oqnpgn4gsl6p7fh',
   className = ""
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -25,17 +19,6 @@ const FileUploader = ({
     { id: 'onedrive', name: 'From OneDrive', icon: Cloud, color: 'text-white' },
     { id: 'url', name: 'From URL', icon: Link, color: 'text-white' },
   ];
-
-  // Load the Dropbox Chooser SDK once an app key is available.
-  useEffect(() => {
-    if (!dropboxAppKey || document.getElementById(DROPBOX_SCRIPT_ID)) return;
-    const script = document.createElement('script');
-    script.id = DROPBOX_SCRIPT_ID;
-    script.type = 'text/javascript';
-    script.src = DROPBOX_SCRIPT_SRC;
-    script.setAttribute('data-app-key', dropboxAppKey);
-    document.body.appendChild(script);
-  }, [dropboxAppKey]);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -76,43 +59,10 @@ const FileUploader = ({
     }
   };
 
-  // The Chooser returns metadata + a link, not File objects — fetch each
-  // link and wrap it as a real File so onFilesSelected gets the same
-  // shape it would from device upload or drag-and-drop.
-  const filesFromDropboxSelection = async (dropboxFiles) => {
-    return Promise.all(
-      dropboxFiles.map(async (f) => {
-        const response = await fetch(f.link);
-        const blob = await response.blob();
-        return new File([blob], f.name, { type: blob.type || 'application/octet-stream' });
-      })
-    );
-  };
-
-  const openDropboxChooser = () => {
-    if (!dropboxAppKey || !window.Dropbox) {
-      console.log('Dropbox is not ready yet — check dropboxAppKey and that dropins.js has loaded.');
-      return;
-    }
-    window.Dropbox.choose({
-      success: (files) => {
-        filesFromDropboxSelection(files)
-          .then((fileObjects) => handleFiles(fileObjects))
-          .catch((err) => console.error('Error importing from Dropbox:', err));
-      },
-      cancel: () => {},
-      linkType: 'direct', // expiring, directly-downloadable link (needed for fetch())
-      multiselect: true,
-      extensions: acceptedFormats.length > 0 ? acceptedFormats.map(f => `.${f}`) : undefined,
-    });
-  };
-
   const handleSourceSelect = (sourceId) => {
     setIsDropdownOpen(false);
     if (sourceId === 'device') {
       document.getElementById('file-upload-input').click();
-    } else if (sourceId === 'dropbox') {
-      openDropboxChooser();
     } else {
       console.log(`Selected source: ${sourceId}`);
     }
