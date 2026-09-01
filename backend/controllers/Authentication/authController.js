@@ -141,7 +141,7 @@ export const googleAuthInit = (req, res) => {
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 2 * 60 * 1000, // Expires in 2 minutes
-    path: '/api/auth/google', // Scoped only to the auth routes
+    path: '/api/auth/google/init', // Scoped only to the auth routes
   });
 
   return res.json({ state });
@@ -171,7 +171,7 @@ export const googleAuthCallback = async (req, res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    path: '/api/auth/google',
+    path: '/api/auth/google/callback',
   };
 
   // 🔒 Verify state to prevent Login CSRF
