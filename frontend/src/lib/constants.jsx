@@ -3,14 +3,11 @@
 // ─────────────────────────────────────────────────────────────
 // APPLICATION ENDPOINTS & CREDENTIALS
 // ─────────────────────────────────────────────────────────────
-
-export const API_BASE_URL = 'https://backend-kijk.onrender.com';
-
+// src/lib/constants.js
+export const API_BASE_URL = ''; // same-origin now; Vercel rewrite proxies /api/* to Render
 export const RECAPTCHA_SITE_KEY = '6LfF_JkrAAAAADh5eTSImyZkNRgezC6UNdxzC0no';
-
 export const GOOGLE_CLIENT_ID = '720705456854-qetqatdv8oqjvn8jc1hnfov97eu0d3sg.apps.googleusercontent.com';
-
-export const GOOGLE_REDIRECT_URI = 'https://backend-kijk.onrender.com/api/auth/google/callback';
+export const GOOGLE_REDIRECT_URI = 'https://fileconverter-mu.vercel.app/api/auth/google/callback';
 
 // ─────────────────────────────────────────────────────────────
 // APP CONSTANTS
