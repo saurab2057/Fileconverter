@@ -33,7 +33,7 @@ export const useAuth = () => {
 // ─────────────────────────────────────────────────────────────
 // AuthProvider Component
 // ─────────────────────────────────────────────────────────────
-export const AuthProvider = ({ children , loadingFallback = null }) => {
+export const AuthProvider = ({ children, loadingFallback = null }) => {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -223,22 +223,28 @@ export const AuthProvider = ({ children , loadingFallback = null }) => {
   // ───────────────────────────────────────────────────────────
   // Auth initialisation — runs once on mount.
   //
-  // Attempts to exchange the httpOnly refresh-token cookie for a
-  // fresh access token. This is what keeps the user logged in
-  // across hard refreshes without persisting the access token in
-  // localStorage.
+  // WHY THIS CHANGE:
+  // We no longer call authService.refreshToken() directly here.
+  // Direct calls bypass the api.js interceptor's `isRefreshing` 
+  // queue, which caused parallel requests to hit the backend 
+  // simultaneously, triggering the "Token reuse detected" 403 lockout.
   //
-  // Outcomes:
-  //   Success → set token + user, authLoading = false → render app
-  //   Failure → clear state, authLoading = false → render app as
-  //             unauthenticated (public routes still load normally)
+  // NEW FLOW:
+  // 1. We request the user profile.
+  // 2. If the access token is missing/expired, the backend returns 401.
+  // 3. The api.js interceptor catches the 401, safely queues any other
+  //    concurrent requests, calls /refresh-token ONCE, and retries.
+  // 4. This guarantees a single, safe refresh cycle on page load.
   // ───────────────────────────────────────────────────────────
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        const { accessToken, user: userData } = await authService.refreshToken();
-        session.setToken(accessToken);
-        setUser(userData);
+        // Fetch profile. The apiClient interceptor will handle the 
+        // 401 -> refresh -> retry cycle transparently.
+        const { data } = await apiClient.get('/api/user/profile');
+        
+        // The backend getUserProfile returns the user object directly
+        setUser(data);
       } catch (error) {
         const status = error?.response?.status;
         // Backend down → network error (no response) or 5xx / 0
