@@ -4,7 +4,7 @@ import Session from '../../models/Session.js';
 import { hashIP, generateJti, isTokenValidAfterChange } from '../../utils/authSecurity.js';
 import { logUserActivity } from '../../middleware/auditLogger.js';
 
-// ─────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────
 // REFRESH TOKEN
 //
 // Validates the refresh token cookie, rotates the token (new JTI),
@@ -101,10 +101,10 @@ export const refreshToken = async (req, res) => {
         // Step 7: Set new refresh token cookie
         res.cookie('jwt_refresh', newRefreshToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            secure:   process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // ✅ FIXED for cross-origin
             maxAge: 7 * 24 * 60 * 60 * 1000,
-            path: '/',
+            path:     '/',
         });
 
         // Step 8: Generate new access token
@@ -164,7 +164,7 @@ export const refreshToken = async (req, res) => {
 //   1. Verify refresh token (if present)
 //   2. Delete the exact session using userId + jti
 //   3. Clear the cookie regardless of token validity
-// ─────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────
 export const logout = async (req, res) => {
     const refreshTokenSecret = process.env.REFRESH_SECRET_KEY;
     const token = req.cookies.jwt_refresh;
@@ -182,9 +182,9 @@ export const logout = async (req, res) => {
 
     res.clearCookie('jwt_refresh', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/'
+        secure:   process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // ✅ FIXED for cross-origin
+        path:     '/'
     });
 
     return res.sendStatus(204);
@@ -206,9 +206,9 @@ export const logoutAllDevices = async (req, res) => {
 
         res.clearCookie('jwt_refresh', {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/'
+            secure:   process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // ✅ FIXED for cross-origin
+            path:     '/'
         });
 
         const ip = req.ip || req.socket.remoteAddress || '';
