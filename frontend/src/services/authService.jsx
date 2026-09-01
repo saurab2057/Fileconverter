@@ -38,28 +38,6 @@ export const authService = {
     });
     return data;
   },
-
-  /**
-   * Fetch a one-time CSRF `state` token for Google OAuth.
-   *
-   * WHY THIS IS CRITICAL:
-   *   - The backend sets an `oauth_state` httpOnly cookie when this endpoint is called.
-   *   - That cookie must be stored on the SAME DOMAIN as your backend
-   *     (because Google will redirect directly to your backend's callback URL).
-   *   - Using `apiClient` ensures the request goes directly to the backend domain
-   *     (not through a frontend proxy), so the cookie is set on the backend domain.
-   *
-   * Without this, the cookie would be set on the frontend domain, and the
-   * callback request (which goes to the backend domain) would not receive it,
-   * causing state mismatch errors.
-   *
-   * @returns {Promise<{ state: string }>}
-   */
-  getGoogleOauthState: async () => {
-    const { data } = await apiClient.get('/api/auth/google/init');
-    return data;
-  },
-
   /**
    * Request a password reset email.
    * @param {string} email - User's registered email
