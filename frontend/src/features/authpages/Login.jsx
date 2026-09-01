@@ -1,16 +1,15 @@
-// src/features/authpages/Login.jsx
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Mail, Lock, Chrome, KeyRound } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useGoogleLogin } from '@react-oauth/google';
 
 import { useAuth } from '@/lib/AuthContext';
 import { loginSchema } from '@/utils/validationSchemas';
 import { authService } from '@/services/authService';
-import { RECAPTCHA_SITE_KEY, GOOGLE_REDIRECT_URI } from '@/lib/constants';
+import { RECAPTCHA_SITE_KEY } from '@/lib/constants';
 import { useToast } from '@/context/ToastContext';
+import { useGoogleAuth } from '@/hooks/useGoogleAuth'; // ✅ NEW HOOK
 
 import LoadingAnimation from '@/components/ui/LoadingAnimation';
 
@@ -26,11 +25,13 @@ const LoginForm = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
-  const [oauthState, setOauthState] = useState(null);
 
   const navigate = useNavigate();
   const { login } = useAuth();
   const toast = useToast();
+
+  // ✅ NEW: Google Auth Hook
+  const { handleGoogleClick, isLoading: isGoogleLoading } = useGoogleAuth();
 
   // Load reCAPTCHA
   useEffect(() => {
@@ -41,20 +42,6 @@ const LoginForm = () => {
       script.defer = true;
       document.body.appendChild(script);
     }
-  }, []);
-
-  // Fetch CSRF state token for Google OAuth
-  useEffect(() => {
-    console.log('[Login] Fetching oauth_state from /google/init');
-    authService.getGoogleOauthState()
-      .then((data) => {
-        console.log('[Login] Received oauth_state:', data.state.substring(0, 8) + '...');
-        setOauthState(data.state);
-      })
-      .catch((err) => {
-        console.error('[Login] Failed to fetch oauth_state:', err);
-        setOauthState(null);
-      });
   }, []);
 
   // Handle error query param from backend redirect
@@ -97,29 +84,6 @@ const LoginForm = () => {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  // Google OAuth – redirect flow
-  const googleLogin = useGoogleLogin({
-    flow: 'auth-code',
-    ux_mode: 'redirect',
-    redirect_uri: GOOGLE_REDIRECT_URI,
-    state: oauthState,
-    onNonOAuthError: (error) => {
-      console.error('[Login] Google login non-OAuth error:', error);
-    },
-  });
-
-  const handleGoogleClick = () => {
-    console.log('[Login] Google button clicked');
-    console.log('[Login] Redirect URI:', GOOGLE_REDIRECT_URI);
-    console.log('[Login] OAuth state:', oauthState ? oauthState.substring(0,8)+'...' : 'null');
-    if (!oauthState) {
-      toast.error('OAuth state not ready. Please refresh.');
-      return;
-    }
-    console.log('[Login] Current document.cookie (for debugging):', document.cookie);
-    googleLogin();
   };
 
   return (
@@ -212,11 +176,17 @@ const LoginForm = () => {
               <button
                 type="button"
                 onClick={handleGoogleClick}
-                disabled={!oauthState}
+                disabled={isGoogleLoading}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl text-gray-300 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Chrome className="w-4 h-4" />
-                <span className="text-sm font-medium">Continue with Google</span>
+                {isGoogleLoading ? (
+                  <span className="text-sm font-medium">Initializing...</span>
+                ) : (
+                  <>
+                    <Chrome className="w-4 h-4" />
+                    <span className="text-sm font-medium">Continue with Google</span>
+                  </>
+                )}
               </button>
 
               {/* reCAPTCHA Notice */}
