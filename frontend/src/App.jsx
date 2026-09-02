@@ -129,7 +129,7 @@ function App() {
                     <Route index element={<HomePage />} />
                     <Route path="/convert/:from/:to" element={<DynamicConverterPage />} />
                     <Route path="/compress/:type"    element={<DynamicCompressorPage />} />
-                    <Route path="/ai/summarizer"     element={SummarizerPage />} />
+                    <Route path="/ai/summarizer"     element={<SummarizerPage />} />
                   </Route>
 
                   {/* ── Auth routes ───────────────────────────────
