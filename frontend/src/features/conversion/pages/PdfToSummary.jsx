@@ -1,28 +1,48 @@
 // @/features/conversion/pages/components/PdfSummaryPage.jsx
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { FileText, Loader, AlertCircle, XCircle, Download, Upload, Sparkles, Lock, UserPlus, X } from 'lucide-react';
-import { Link } from 'react-router-dom'; // ✅ FIXED: removed unused useNavigate, added Link for auth modal
+import { FileText, AlertCircle, XCircle, Download, Upload, Sparkles, Lock, UserPlus, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import apiClient from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 
-// ✅ FIXED: Word limit is now 500 consistently across truncation logic,
-// UI counter, and description text. Previously description said 200,
-// counter showed /200, but truncation only kicked in at 500 — all three
-// are now aligned to 500 words.
+// ==========================================
+// 1. CONFIGURATION & CONSTANTS
+// ==========================================
+
 const WORD_LIMIT = 500;
 
+const markdownComponents = {
+  p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold text-gray-900 dark:text-white">{children}</strong>,
+  em: ({ children }) => <em className="italic text-gray-800 dark:text-gray-200">{children}</em>,
+  ol: ({ children }) => <ol className="list-decimal pl-5 mb-3 last:mb-0 space-y-1">{children}</ol>,
+  ul: ({ children }) => <ul className="list-disc pl-5 mb-3 last:mb-0 space-y-1">{children}</ul>,
+  li: ({ children }) => <li className="text-gray-800 dark:text-gray-200">{children}</li>,
+  h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-4 text-gray-900 dark:text-white">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-3 text-gray-900 dark:text-white">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-base font-semibold mb-2 mt-2 text-gray-900 dark:text-white">{children}</h3>,
+};
+
+// ==========================================
+// 2. COMPONENT DEFINITION
+// ==========================================
+
 const PdfToSummary = () => {
+  // --- State & Refs ---
   const timerRef = useRef(null);
-  // ✅ FIXED: removed `const navigate = useNavigate()` — was imported but never used
-  const { isAuthenticated } = useAuth(); // ✅ FIXED: added isAuthenticated for auth gate
-  const [showAuthModal, setShowAuthModal] = useState(false);   // ✅ FIXED: added for auth modal
+  const { isAuthenticated } = useAuth();
+  
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [text, setText] = useState('');
   const [file, setFile] = useState(null);
   const [summary, setSummary] = useState('');
   const [status, setStatus] = useState('idle'); // 'idle' | 'processing' | 'completed' | 'error'
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Auto-truncate text to WORD_LIMIT words
+  // --- Effects ---
+  
+  // Auto-truncate text to WORD_LIMIT
   const truncatedText = useMemo(() => {
     const words = text.trim().split(/\s+/).filter(w => w.length > 0);
     return words.length <= WORD_LIMIT ? text : words.slice(0, WORD_LIMIT).join(' ');
@@ -32,7 +52,7 @@ const PdfToSummary = () => {
     if (truncatedText !== text) setText(truncatedText);
   }, [truncatedText, text]);
 
-  // 🔒 Cleanup timer on unmount to prevent memory leak
+  // Cleanup timer on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
       if (timerRef.current) {
@@ -42,18 +62,20 @@ const PdfToSummary = () => {
     };
   }, []);
 
+  // --- Handlers ---
+
   const wordCount = text.trim() ? text.trim().split(/\s+/).filter(w => w).length : 0;
 
   const handleFileUpload = (uploadedFile) => {
     if (uploadedFile?.type === 'application/pdf') {
       setFile({ name: uploadedFile.name, size: uploadedFile.size, file: uploadedFile });
-      setText(''); // clear text when PDF uploaded
+      setText('');
     }
   };
 
   const handleTextChange = (value) => {
     setText(value);
-    setFile(null); // clear file when typing
+    setFile(null);
   };
 
   const clearInput = () => {
@@ -62,14 +84,10 @@ const PdfToSummary = () => {
     setSummary('');
     setStatus('idle');
     setErrorMessage('');
-    // ✅ FIXED: removed redundant null check — clearInterval(null) is safe in JS
     clearInterval(timerRef.current);
     timerRef.current = null;
   };
 
-  // ✅ FIXED: formatFileSize was wrapped in useMemo (memoizes the function reference,
-  // not a computed value — semantically wrong). Changed to useCallback which is
-  // the correct hook for memoizing functions.
   const formatFileSize = useCallback((bytes) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -78,9 +96,10 @@ const PdfToSummary = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }, []);
 
+  // --- Core Actions ---
+
   const summarize = async () => {
-    if (status === 'processing') return;
-    if (!text && !file) return;
+    if (status === 'processing' || (!text && !file)) return;
 
     setStatus('processing');
     setSummary('');
@@ -97,12 +116,10 @@ const PdfToSummary = () => {
       }
 
       const response = await apiClient.post('/api/ai/summarize-pdf', formData);
-
-      // Typewriter effect
       const fullText = response.data || '';
+      
+      // Typewriter effect for the summary
       setSummary('');
-
-      // Clear existing timer before starting new one
       clearInterval(timerRef.current);
 
       let i = 0;
@@ -114,12 +131,10 @@ const PdfToSummary = () => {
           clearInterval(timerRef.current);
           timerRef.current = null;
         }
-      }, 8); // ~125 chars/sec
+      }, 8);
 
       setStatus('completed');
     } catch (error) {
-      // ✅ Everything working but summary failed (400, 422, etc.)
-      // Other errors handled by api.jsx interceptor (500, 503)
       const msg = error.response?.data?.message || 'Failed to generate summary.';
       setErrorMessage(msg);
       setStatus('error');
@@ -138,23 +153,30 @@ const PdfToSummary = () => {
     URL.revokeObjectURL(url);
   };
 
+  // --- Derived State ---
   const isProcessing = status === 'processing';
   const hasInput = text || file;
   const isDisabled = isProcessing || !hasInput;
 
+  // ==========================================
+  // 3. RENDER (JSX)
+  // ==========================================
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      
+      {/* Header Section */}
       <div className="text-center mb-8">
         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3">
           Smart Summarizer
         </h1>
-        {/* ✅ FIXED: description now correctly states 500-word limit */}
         <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
           Paste text (up to {WORD_LIMIT} words) or upload a PDF (max 2 pages) for a concise summary.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
         {/* Input Panel */}
         <div className="flex flex-col h-[600px]">
           <div className="bg-white dark:bg-gray-800 rounded-t-xl border border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
@@ -190,10 +212,8 @@ const PdfToSummary = () => {
             )}
           </div>
 
-          {/* Bottom Bar: Word count | Upload | Summarize */}
           <div className="bg-white dark:bg-gray-800 rounded-b-xl border border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              {/* ✅ FIXED: counter now shows /500 to match actual truncation limit */}
               {file
                 ? `${formatFileSize(file.size)} • 2-page limit`
                 : `${wordCount}/${WORD_LIMIT} words`}
@@ -212,8 +232,6 @@ const PdfToSummary = () => {
                 />
               </label>
 
-              {/* ✅ FIXED: auth gate added — shows modal if not logged in,
-                  runs summarize if logged in. Matches CompressorPage pattern. */}
               <button
                 onClick={isAuthenticated ? summarize : () => setShowAuthModal(true)}
                 disabled={isAuthenticated ? isDisabled : false}
@@ -267,8 +285,10 @@ const PdfToSummary = () => {
                 <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
                   {file ? 'Summary of your PDF:' : 'Summary of your text:'}
                 </p>
-                <div className="text-gray-900 dark:text-gray-200 text-base leading-relaxed whitespace-pre-wrap">
-                  {summary}
+                <div className="text-gray-900 dark:text-gray-200 text-base leading-relaxed">
+                  <ReactMarkdown components={markdownComponents}>
+                    {summary}
+                  </ReactMarkdown>
                 </div>
               </div>
             ) : (
@@ -291,11 +311,21 @@ const PdfToSummary = () => {
         </div>
       </div>
 
-      {/* ✅ FIXED: Auth modal — same pattern as CompressorPage and ConverterPage */}
+      {/* Auth Modal */}
       {showAuthModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowAuthModal(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-8 relative" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700" aria-label="Close">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" 
+          onClick={() => setShowAuthModal(false)}
+        >
+          <div 
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-8 relative" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setShowAuthModal(false)} 
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700" 
+              aria-label="Close"
+            >
               <X className="w-6 h-6" />
             </button>
             <div className="text-center mb-6">
