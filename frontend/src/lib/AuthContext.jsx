@@ -223,37 +223,34 @@ export const AuthProvider = ({ children, loadingFallback = null }) => {
   // ───────────────────────────────────────────────────────────
   // Auth initialisation — runs once on mount.
   //
-  // WHY THIS CHANGE:
-  // We no longer call authService.refreshToken() directly here.
-  // Direct calls bypass the api.js interceptor's `isRefreshing` 
-  // queue, which caused parallel requests to hit the backend 
-  // simultaneously, triggering the "Token reuse detected" 403 lockout.
+  // WHY CALL /refresh-token DIRECTLY:
+  //   Previously, we called /api/user/profile and relied on the
+  //   Axios interceptor to catch the 401, refresh the token, and
+  //   retry. This guaranteed a visible 401 error in the network
+  //   tab on every hard reload, wasting a full round-trip.
   //
   // NEW FLOW:
-  // 1. We request the user profile.
-  // 2. If the access token is missing/expired, the backend returns 401.
-  // 3. The api.js interceptor catches the 401, safely queues any other
-  //    concurrent requests, calls /refresh-token ONCE, and retries.
-  // 4. This guarantees a single, safe refresh cycle on page load.
+  //   1. Call authService.refreshToken() (validates the httpOnly cookie).
+  //   2. The backend checks the database for user status (banned/active).
+  //   3. On success, we receive { accessToken, user } in a single response.
+  //   4. Store the token and user state.
+  //   5. If it fails (no cookie, banned, expired), we clear local state.
+  //   This eliminates the 401 error entirely and speeds up initial load.
   // ───────────────────────────────────────────────────────────
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        // Fetch profile. The apiClient interceptor will handle the 
-        // 401 -> refresh -> retry cycle transparently.
-        const { data } = await apiClient.get('/api/user/profile');
-        
-        // The backend getUserProfile returns the user object directly
-        setUser(data);
+        const { accessToken, user: userData } = await authService.refreshToken();
+        session.setToken(accessToken);
+        setUser(userData);
       } catch (error) {
-        const status = error?.response?.status;
-        // Backend down → network error (no response) or 5xx / 0
-        if (!error.response || status >= 500 || status === 0) {
+        // Clear local state on any auth failure
+        session.clearToken();
+        setUser(null);
+
+        // If the backend is down (no response or 5xx), show the service unavailable page
+        if (!error.response || error.response.status >= 500) {
           setServiceUnavailable(true);
-        } else {
-          // Normal unauthorised – just clear
-          setUser(null);
-          session.clearToken();
         }
       } finally {
         setAuthLoading(false);
@@ -285,9 +282,10 @@ export const AuthProvider = ({ children, loadingFallback = null }) => {
   //
   //   'pageshow' (persisted)  — fires when the browser restores a
   //     page from the back/forward cache (bfcache). The cached
-  //     page may have an expired access token, so we re-verify by
-  //     hitting /api/user/profile. The Axios interceptor handles
-  //     the refresh if needed; if it fails we log out locally.
+  //     page may have an expired access token. We proactively
+  //     call refreshToken() to avoid a 401 error on the next
+  //     API call. This also updates the UI (avatar, name) in
+  //     case the user changed their profile in another tab.
   //
   //   BroadcastChannel 'message'  — LOGOUT from another tab.
   //     Delegates to handleBroadcastLogout.
@@ -325,11 +323,13 @@ export const AuthProvider = ({ children, loadingFallback = null }) => {
 
     const handlePageShow = (event) => {
       if (event.persisted) {
-        authService.getProfile()
-          .then((freshUser) => {
-            // ✅ Update context with latest data from server
-            // Catches: name/photo changes, role changes, status=banned
-            updateUser(freshUser);
+        // If the page is restored from bfcache, the access token might be expired.
+        // Proactively refresh it now to avoid a 401 on the next API call.
+        // Since refreshToken returns the user, we can update the context immediately.
+        authService.refreshToken()
+          .then(({ accessToken, user: freshUser }) => {
+            session.setToken(accessToken);
+            setUser(freshUser); // Update UI with fresh user data
           })
           .catch(() => {
             session.clearToken();
