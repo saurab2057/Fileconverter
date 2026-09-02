@@ -1,7 +1,7 @@
 // src/features/compression/pages/DynamicCompressorPage.jsx
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import CompressorPage from '@/components/common/CompressorPage';
+import FileProcessingPage from '@/components/common/FileProcessingPage'; 
 import NotFound from '@/components/common/NotFound';
 import { getCompressionTool } from '@/lib/toolRegistry';
 
@@ -23,13 +23,10 @@ const DynamicCompressorPage = () => {
     ? settingsComponents[tool.settingsComponent]
     : null;
 
-  // BUG FIX: React.lazy requires a <Suspense> boundary somewhere in the tree.
-  // Without it, the app throws "A React component suspended while rendering,
-  // but no fallback UI was specified" the moment any settings modal opens.
-  // Wrapping here guarantees coverage regardless of what CompressorPage does internally.
   return (
     <React.Suspense fallback={null}>
-      <CompressorPage
+      <FileProcessingPage
+        mode="compress"
         acceptedFormats={tool.acceptedFormats}
         title={tool.title}
         description={tool.description}
