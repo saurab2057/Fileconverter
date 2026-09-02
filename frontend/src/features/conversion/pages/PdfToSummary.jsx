@@ -1,4 +1,4 @@
-// src/features/summarizer/pages/SummarizerPage.jsx
+//src//features//conversion//pages//PdfToSummary.jsx
 import React, { useState, useRef, useCallback } from 'react';
 import { FileText, AlertCircle, XCircle, Download, Upload, Sparkles, Lock, UserPlus, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
