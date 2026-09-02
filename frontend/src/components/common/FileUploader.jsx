@@ -1,19 +1,29 @@
-import React, { useState } from 'react';
+// src/components/common/FileUploader.jsx
+import React, { useState, useId } from 'react';
 import { FileText, ChevronDown, ChevronUp, Folder, Cloud, Link, HardDrive, Database } from 'lucide-react';
 
 const FileUploader = ({
   acceptedFormats = [],
   title = "Choose Files",
   subtitle = "Easily convert files from one format to another, online.",
-  maxFileSize = "100MB",
   onFilesSelected,
   className = ""
 }) => {
+  // ✅ Generate a unique ID for this specific instance to prevent DOM collisions
+  const fileInputId = useId(); 
+  
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
   const uploadSources = [
     { id: 'device', name: 'From Device', icon: Folder, color: 'text-white' },
+    
+    // ---------------------------------------------------------
+    // 🚀 FUTURE INTEGRATIONS: 
+    // These options are currently placeholders. 
+    // When ready, implement the OAuth/API logic for these services 
+    // inside the handleSourceSelect function.
+    // ---------------------------------------------------------
     { id: 'dropbox', name: 'From Dropbox', icon: Database, color: 'text-white' },
     { id: 'googledrive', name: 'From Google Drive', icon: HardDrive, color: 'text-white' },
     { id: 'onedrive', name: 'From OneDrive', icon: Cloud, color: 'text-white' },
@@ -42,7 +52,7 @@ const FileUploader = ({
   const handleFileInput = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const snapshotted = Array.from(e.target.files);
-      e.target.value = null; 
+      e.target.value = null; // Reset to allow re-uploading the same file
       handleFiles(snapshotted);
     }
   };
@@ -56,11 +66,14 @@ const FileUploader = ({
   const handleSourceSelect = (sourceId) => {
     setIsDropdownOpen(false);
     
-    // Only trigger action for 'device'. 
-    // All other options simply close the dropdown and do nothing else.
     if (sourceId === 'device') {
-      document.getElementById('file-upload-input').click();
-    }
+      // ✅ Use the dynamic unique ID instead of a hardcoded string
+      document.getElementById(fileInputId)?.click();
+    } 
+    
+    // TODO: Add logic here for future integrations
+    // else if (sourceId === 'dropbox') { ... }
+    // else if (sourceId === 'googledrive') { ... }
   };
 
   const acceptString = acceptedFormats.length > 0
@@ -75,10 +88,11 @@ const FileUploader = ({
 
       <div className="relative">
         <div
-          className={`bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-2xl border-2 border-dashed transition-all duration-300 min-h-[400px] p-12 ${dragActive
-            ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20 scale-105'
-            : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:scale-102'
-            }`}
+          className={`bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-2xl border-2 border-dashed transition-all duration-300 min-h-[400px] p-12 ${
+            dragActive
+              ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20 scale-105'
+              : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:scale-102'
+          }`}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
           onDragOver={handleDrag}
@@ -90,7 +104,7 @@ const FileUploader = ({
             accept={acceptString}
             onChange={handleFileInput}
             className="hidden"
-            id="file-upload-input"
+            id={fileInputId} // ✅ Dynamic ID applied here
           />
 
           <div className="h-full flex flex-col items-center justify-center text-center mt-8">
@@ -110,8 +124,9 @@ const FileUploader = ({
                     <button
                       key={source.id}
                       onClick={() => handleSourceSelect(source.id)}
-                      className={`w-full flex items-center space-x-3 px-6 py-4 text-left hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors duration-200 text-white ${index < uploadSources.length - 1 ? 'border-b border-blue-500 dark:border-blue-400' : ''
-                        }`}
+                      className={`w-full flex items-center space-x-3 px-6 py-4 text-left hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors duration-200 text-white ${
+                        index < uploadSources.length - 1 ? 'border-b border-blue-500 dark:border-blue-400' : ''
+                      }`}
                     >
                       <source.icon className={`w-5 h-5 ${source.color}`} />
                       <span className="font-medium">{source.name}</span>
@@ -127,6 +142,7 @@ const FileUploader = ({
               </p>
             </div>
 
+            {/* Note: Kept hardcoded as requested since limits are fixed across the app */}
             <p className="text-gray-500 dark:text-gray-400 text-sm">
               Total size of single file or multiple files combined must be under{' '}
               <span className="text-blue-600 dark:text-blue-400 font-medium">100 MB</span>.
