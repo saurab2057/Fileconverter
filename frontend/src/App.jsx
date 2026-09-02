@@ -38,7 +38,7 @@ const ForgotPasswordPage    = lazy(() => import('@/features/authpages/Forgetpass
 const PasskeyLogin          = lazy(() => import('@/features/authpages/PasskeyLogin'));
 const DynamicConverterPage  = lazy(() => import('@/features/conversion/pages/DynamicConverterPage'));
 const DynamicCompressorPage = lazy(() => import('@/features/compression/pages/DynamicCompressorPage'));
-const PdfToSummary          = lazy(() => import('@/features/conversion/pages/PdfToSummary'));
+const SummarizerPage        = lazy(() => import('@/features/summarizer/pages/SummarizerPage'));
 const UserDashboard         = lazy(() => import('@/components/layout/Dashboard/UserDashboard'));
 const AdminRoutes           = lazy(() => import('@/routes/AdminRoutes'));
 
@@ -129,7 +129,7 @@ function App() {
                     <Route index element={<HomePage />} />
                     <Route path="/convert/:from/:to" element={<DynamicConverterPage />} />
                     <Route path="/compress/:type"    element={<DynamicCompressorPage />} />
-                    <Route path="/ai/summarizer"     element={<PdfToSummary />} />
+                    <Route path="/ai/summarizer"     element={SummarizerPage />} />
                   </Route>
 
                   {/* ── Auth routes ───────────────────────────────
