@@ -1,7 +1,7 @@
 // src/features/conversion/pages/DynamicConverterPage.jsx
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import ConverterPage from '@/components/common/ConverterPage';
+import FileProcessingPage from '@/components/common/FileProcessingPage';
 import NotFound from '@/components/common/NotFound';
 import { getConversionTool } from '@/lib/toolRegistry';
 
@@ -26,13 +26,10 @@ const DynamicConverterPage = () => {
     ? settingsComponents[tool.settingsComponent]
     : null;
 
-  // BUG FIX: React.lazy requires a <Suspense> boundary somewhere in the tree.
-  // Without it, the app throws "A React component suspended while rendering,
-  // but no fallback UI was specified" the moment any settings modal opens.
-  // Wrapping here guarantees coverage regardless of what ConverterPage does internally.
   return (
     <React.Suspense fallback={null}>
-      <ConverterPage
+      <FileProcessingPage
+        mode="convert"
         fromFormat={tool.fromFormat}
         toFormat={tool.toFormat}
         title={tool.title}
