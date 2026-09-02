@@ -1,15 +1,15 @@
-// @/features/conversion/pages/components/PdfSummaryPage.jsx
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+// src/features/summarizer/pages/SummarizerPage.jsx
+import React, { useState, useRef, useCallback } from 'react';
 import { FileText, AlertCircle, XCircle, Download, Upload, Sparkles, Lock, UserPlus, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import apiClient from '@/lib/api';
+
 import { useAuth } from '@/lib/AuthContext';
+import { fileProcessingService } from '@/services/fileProcessingService';
 
 // ==========================================
 // 1. CONFIGURATION & CONSTANTS
 // ==========================================
-
 const WORD_LIMIT = 500;
 
 const markdownComponents = {
@@ -27,9 +27,7 @@ const markdownComponents = {
 // ==========================================
 // 2. COMPONENT DEFINITION
 // ==========================================
-
-const PdfToSummary = () => {
-  // --- State & Refs ---
+const SummarizerPage = () => {
   const timerRef = useRef(null);
   const { isAuthenticated } = useAuth();
   
@@ -37,34 +35,20 @@ const PdfToSummary = () => {
   const [text, setText] = useState('');
   const [file, setFile] = useState(null);
   const [summary, setSummary] = useState('');
-  const [status, setStatus] = useState('idle'); // 'idle' | 'processing' | 'completed' | 'error'
+  const [status, setStatus] = useState('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // --- Effects ---
-  
-  // Auto-truncate text to WORD_LIMIT
-  const truncatedText = useMemo(() => {
-    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-    return words.length <= WORD_LIMIT ? text : words.slice(0, WORD_LIMIT).join(' ');
-  }, [text]);
-
-  useEffect(() => {
-    if (truncatedText !== text) setText(truncatedText);
-  }, [truncatedText, text]);
-
-  // Cleanup timer on unmount to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, []);
-
   // --- Handlers ---
-
-  const wordCount = text.trim() ? text.trim().split(/\s+/).filter(w => w).length : 0;
+  const handleTextChange = (value) => {
+    setFile(null);
+    const words = value.trim().split(/\s+/).filter(w => w.length > 0);
+    
+    if (words.length > WORD_LIMIT) {
+      setText(words.slice(0, WORD_LIMIT).join(' '));
+    } else {
+      setText(value);
+    }
+  };
 
   const handleFileUpload = (uploadedFile) => {
     if (uploadedFile?.type === 'application/pdf') {
@@ -73,19 +57,16 @@ const PdfToSummary = () => {
     }
   };
 
-  const handleTextChange = (value) => {
-    setText(value);
-    setFile(null);
-  };
-
   const clearInput = () => {
     setText('');
     setFile(null);
     setSummary('');
     setStatus('idle');
     setErrorMessage('');
-    clearInterval(timerRef.current);
-    timerRef.current = null;
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   };
 
   const formatFileSize = useCallback((bytes) => {
@@ -97,7 +78,6 @@ const PdfToSummary = () => {
   }, []);
 
   // --- Core Actions ---
-
   const summarize = async () => {
     if (status === 'processing' || (!text && !file)) return;
 
@@ -106,21 +86,17 @@ const PdfToSummary = () => {
     setErrorMessage('');
 
     try {
-      const formData = new FormData();
-
-      if (text) {
-        formData.append('text', truncatedText);
-      } else if (file) {
-        formData.append('pdf', file.file);
-        formData.append('max_pages', '2');
-      }
-
-      const response = await apiClient.post('/api/ai/summarize-pdf', formData);
-      const fullText = response.data || '';
+      const response = await fileProcessingService.summarize({
+        text: text || undefined,
+        pdf: file?.file || undefined,
+        max_pages: file ? '2' : undefined,
+      });
       
-      // Typewriter effect for the summary
+      const fullText = response.data || response || '';
+      
+      // Typewriter effect
       setSummary('');
-      clearInterval(timerRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
 
       let i = 0;
       timerRef.current = setInterval(() => {
@@ -153,41 +129,44 @@ const PdfToSummary = () => {
     URL.revokeObjectURL(url);
   };
 
+  // Cleanup timer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
+
   // --- Derived State ---
   const isProcessing = status === 'processing';
   const hasInput = text || file;
   const isDisabled = isProcessing || !hasInput;
+  const wordCount = text.trim() ? text.trim().split(/\s+/).filter(w => w).length : 0;
 
   // ==========================================
   // 3. RENDER (JSX)
   // ==========================================
-
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      
       {/* Header Section */}
       <div className="text-center mb-8">
         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3">
           Smart Summarizer
         </h1>
         <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-          Paste text (up to {WORD_LIMIT} words) or upload a PDF (max 2 pages) for a concise summary.
+          Paste text (up to {WORD_LIMIT} words) or upload a PDF (max 2 pages) for a concise AI summary.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
         {/* Input Panel */}
         <div className="flex flex-col h-[600px]">
           <div className="bg-white dark:bg-gray-800 rounded-t-xl border border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Input</h2>
             {hasInput && (
-              <button
-                onClick={clearInput}
-                className="text-sm text-red-600 dark:text-red-400 hover:text-red-500 dark:hover:text-red-300 flex items-center gap-1"
-              >
-                <XCircle className="w-4 h-4" />
-                Clear
+              <button onClick={clearInput} className="text-sm text-red-600 dark:text-red-400 hover:text-red-500 dark:hover:text-red-300 flex items-center gap-1">
+                <XCircle className="w-4 h-4" /> Clear
               </button>
             )}
           </div>
@@ -214,24 +193,19 @@ const PdfToSummary = () => {
 
           <div className="bg-white dark:bg-gray-800 rounded-b-xl border border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              {file
-                ? `${formatFileSize(file.size)} • 2-page limit`
-                : `${wordCount}/${WORD_LIMIT} words`}
+              {file ? `${formatFileSize(file.size)} • 2-page limit` : `${wordCount}/${WORD_LIMIT} words`}
             </div>
-
             <div className="flex gap-3">
               <label className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg cursor-pointer transition-colors flex items-center gap-2">
-                <Upload className="w-4 h-4" />
-                Upload PDF
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
-                  className="hidden"
-                  disabled={isProcessing}
+                <Upload className="w-4 h-4" /> Upload PDF
+                <input 
+                  type="file" 
+                  accept=".pdf" 
+                  onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} 
+                  className="hidden" 
+                  disabled={isProcessing} 
                 />
               </label>
-
               <button
                 onClick={isAuthenticated ? summarize : () => setShowAuthModal(true)}
                 disabled={isAuthenticated ? isDisabled : false}
@@ -250,18 +224,17 @@ const PdfToSummary = () => {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Summary</h2>
             {summary && (
               <div className="flex gap-2">
-                <button
-                  onClick={() => navigator.clipboard.writeText(summary)}
+                <button 
+                  onClick={() => navigator.clipboard.writeText(summary)} 
                   className="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
                 >
                   Copy
                 </button>
-                <button
-                  onClick={handleDownload}
+                <button 
+                  onClick={handleDownload} 
                   className="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors flex items-center gap-2"
                 >
-                  <Download className="w-4 h-4" />
-                  Download
+                  <Download className="w-4 h-4" /> Download
                 </button>
               </div>
             )}
@@ -286,16 +259,14 @@ const PdfToSummary = () => {
                   {file ? 'Summary of your PDF:' : 'Summary of your text:'}
                 </p>
                 <div className="text-gray-900 dark:text-gray-200 text-base leading-relaxed">
-                  <ReactMarkdown components={markdownComponents}>
-                    {summary}
-                  </ReactMarkdown>
+                  <ReactMarkdown components={markdownComponents}>{summary}</ReactMarkdown>
                 </div>
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400 text-center">
                 <div>
                   <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Download className="w-8 h-8 text-gray-500 dark:text-gray-400" />
+                    <Sparkles className="w-8 h-8 text-gray-500 dark:text-gray-400" />
                   </div>
                   <p>Your summary will appear here</p>
                 </div>
@@ -313,19 +284,9 @@ const PdfToSummary = () => {
 
       {/* Auth Modal */}
       {showAuthModal && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" 
-          onClick={() => setShowAuthModal(false)}
-        >
-          <div 
-            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-8 relative" 
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button 
-              onClick={() => setShowAuthModal(false)} 
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700" 
-              aria-label="Close"
-            >
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowAuthModal(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-8 relative" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700" aria-label="Close">
               <X className="w-6 h-6" />
             </button>
             <div className="text-center mb-6">
@@ -355,4 +316,4 @@ const PdfToSummary = () => {
   );
 };
 
-export default PdfToSummary;
+export default SummarizerPage;
