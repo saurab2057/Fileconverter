@@ -1,7 +1,7 @@
 // src/lib/AuthContext.jsx
 import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import apiClient, { session } from '@/lib/api';
+import apiClient, { session, refreshWithLock } from '@/lib/api'; // CHANGED: import refreshWithLock
 import { authService } from '@/services/authService';
 import NotFound from '@/components/common/NotFound';
 
@@ -230,17 +230,28 @@ export const AuthProvider = ({ children, loadingFallback = null }) => {
   //   tab on every hard reload, wasting a full round-trip.
   //
   // NEW FLOW:
-  //   1. Call authService.refreshToken() (validates the httpOnly cookie).
+  //   1. Call refreshWithLock() (validates the httpOnly cookie).
   //   2. The backend checks the database for user status (banned/active).
   //   3. On success, we receive { accessToken, user } in a single response.
   //   4. Store the token and user state.
   //   5. If it fails (no cookie, banned, expired), we clear local state.
   //   This eliminates the 401 error entirely and speeds up initial load.
+  //
+  // CHANGED: uses refreshWithLock() instead of authService.refreshToken()
+  //   directly. If this tab and another tab of the same site both load
+  //   at the same time (e.g. two tabs restored together, or opened
+  //   within the same instant), both would otherwise race to call
+  //   /api/auth/refresh-token with the same not-yet-rotated cookie —
+  //   which trips the backend's reuse-detection and wipes every
+  //   session for the user (see the big comment in api.js above
+  //   refreshWithLock() for the full explanation). Routing through
+  //   the lock serializes these calls across tabs so only one hits
+  //   the network at a time.
   // ───────────────────────────────────────────────────────────
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        const { accessToken, user: userData } = await authService.refreshToken();
+        const { accessToken, user: userData } = await refreshWithLock();
         session.setToken(accessToken);
         setUser(userData);
       } catch (error) {
@@ -283,7 +294,7 @@ export const AuthProvider = ({ children, loadingFallback = null }) => {
   //   'pageshow' (persisted)  — fires when the browser restores a
   //     page from the back/forward cache (bfcache). The cached
   //     page may have an expired access token. We proactively
-  //     call refreshToken() to avoid a 401 error on the next
+  //     call refreshWithLock() to avoid a 401 error on the next
   //     API call. This also updates the UI (avatar, name) in
   //     case the user changed their profile in another tab.
   //
@@ -325,8 +336,13 @@ export const AuthProvider = ({ children, loadingFallback = null }) => {
       if (event.persisted) {
         // If the page is restored from bfcache, the access token might be expired.
         // Proactively refresh it now to avoid a 401 on the next API call.
-        // Since refreshToken returns the user, we can update the context immediately.
-        authService.refreshToken()
+        // Since refresh returns the user, we can update the context immediately.
+        //
+        // CHANGED: uses refreshWithLock() instead of authService.refreshToken()
+        // directly, for the same cross-tab race reason as initializeAuth above —
+        // a bfcache restore in one tab can coincide with another tab refreshing
+        // at the same moment.
+        refreshWithLock()
           .then(({ accessToken, user: freshUser }) => {
             session.setToken(accessToken);
             setUser(freshUser); // Update UI with fresh user data
