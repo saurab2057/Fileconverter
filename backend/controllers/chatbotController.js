@@ -37,7 +37,7 @@ export const handleChat = async (req, res) => {
   try {
     // 🔒 HARD TIMEOUT (PROTECTS YOUR HF SERVICE)
     const aiResponse = await axios.post(
-      'https://ai-microservices-xwid.onrender.com/chat',
+      `${process.env.AI_SERVICE_URL}/chat`,
       { message: sanitizedMessage },
       {
         timeout: 30000,

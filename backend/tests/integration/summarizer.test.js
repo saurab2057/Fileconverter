@@ -9,7 +9,7 @@ import { setup, teardown } from '../setup.js';
 // ─────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────
-const AI_SERVICE    = 'http://localhost:8000';
+const AI_SERVICE = process.env.AI_SERVICE_URL;
 const SUMMARIZE_URL = '/api/ai/summarize-pdf';
 
 // Zero-width characters only — sanitizeInput() strips these → empty string

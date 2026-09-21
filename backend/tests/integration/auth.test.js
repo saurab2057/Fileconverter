@@ -201,232 +201,235 @@ describe('Auth Routes - /api/auth', () => {
   });
 
   // ─────────────────────────────────────────────────────────
-// POST /api/auth/google
-// Uses mocked Google userinfo endpoint.
-// The real Google API is NOT called during tests.
-// ─────────────────────────────────────────────────────────
-describe('POST /api/auth/google', () => {
+  // GET /api/auth/google/init + GET /api/auth/google/callback
+  //
+  // Rewritten to match the actual OAuth2 Authorization Code flow
+  // implemented in authController.js. The old tests here exercised
+  // POST /api/auth/google with a raw access_token in the body — that
+  // route does not exist; the real flow is:
+  //   1. GET /google/init sets an oauth_state cookie and redirects
+  //      to Google's consent screen.
+  //   2. Google redirects back to GET /google/callback with
+  //      ?code=...&state=...
+  //   3. The callback verifies state against the oauth_state cookie,
+  //      exchanges the code for a token (fetch #1), fetches userinfo
+  //      with that token (fetch #2), then creates/logs in the user.
+  // global.fetch is stubbed per-call (onCall(0)/onCall(1)) to mock
+  // those two outbound requests. The real Google API is NOT called.
+  // ─────────────────────────────────────────────────────────
+  describe('GET /api/auth/google/init', () => {
+    it('should set the oauth_state cookie and redirect to Google', async () => {
+      const res = await request(app).get('/api/auth/google/init');
 
-  const mockGoogleUser = ({
-    name = 'Google User',
-    email = 'googleuser@gmail.com',
-    picture = 'https://lh3.googleusercontent.com/photo.jpg',
-    sub = 'google-test-user-123',
-    email_verified = true,
-  } = {}) => ({
-    sub,
-    name,
-    email,
-    picture,
-    email_verified,
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.include('https://accounts.google.com/o/oauth2/v2/auth');
+      expect(res.headers.location).to.include(`client_id=${process.env.GOOGLE_CLIENT_ID}`);
+      expect(res.headers.location).to.match(/state=[0-9a-f]{64}/);
+
+      const setCookie = res.headers['set-cookie'].join(';');
+      expect(setCookie).to.match(/oauth_state=/);
+    });
   });
 
-  const mockGoogleSuccess = (user = mockGoogleUser()) => {
-    sandbox.stub(global, 'fetch').resolves({
-      ok: true,
-      status: 200,
-      json: async () => user,
+  describe('GET /api/auth/google/callback', () => {
+    const STATE = 'test-oauth-state-value';
+    const withState = (req, state = STATE) => req.set('Cookie', `oauth_state=${state}`);
+
+    const mockGoogleUserPayload = (overrides = {}) => ({
+      name: 'Google User',
+      email: 'googleuser@gmail.com',
+      picture: 'https://lh3.googleusercontent.com/photo.jpg',
+      email_verified: true,
+      ...overrides,
     });
-  };
 
-  const mockGoogleFailure = (status = 401) => {
-    sandbox.stub(global, 'fetch').resolves({
-      ok: false,
-      status,
-      json: async () => ({
-        error: 'invalid_token',
-      }),
+    // Stubs the two outbound fetch calls the callback makes, in order:
+    // (0) POST token exchange, (1) GET userinfo.
+    const mockGoogleExchange = ({
+      tokenOk = true,
+      userinfoOk = true,
+      userPayload = mockGoogleUserPayload(),
+    } = {}) => {
+      const stub = sandbox.stub(global, 'fetch');
+      stub.onCall(0).resolves({
+        ok: tokenOk,
+        status: tokenOk ? 200 : 400,
+        text: async () => 'token exchange failed',
+        json: async () => ({ access_token: 'fake-google-access-token' }),
+      });
+      stub.onCall(1).resolves({
+        ok: userinfoOk,
+        status: userinfoOk ? 200 : 401,
+        json: async () => userPayload,
+      });
+      return stub;
+    };
+
+    it('should redirect to google_auth_failed when state does not match the oauth_state cookie', async () => {
+      const res = await request(app)
+        .get('/api/auth/google/callback')
+        .query({ state: 'forged-state', code: 'irrelevant' })
+        .set('Cookie', `oauth_state=${STATE}`);
+
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(`${process.env.FRONTEND_URL}/login?error=google_auth_failed`);
     });
-  };
 
+    it('should redirect to google_auth_cancelled when Google reports an error', async () => {
+      const res = await withState(
+        request(app).get('/api/auth/google/callback').query({ state: STATE, error: 'access_denied' })
+      );
 
-  it('should create a new Google user and return accessToken', async () => {
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(`${process.env.FRONTEND_URL}/login?error=google_auth_cancelled`);
+    });
 
-    mockGoogleSuccess(
-      mockGoogleUser({
-        name: 'Google User',
-        email: 'googleuser@gmail.com',
-        picture: 'https://lh3.googleusercontent.com/photo.jpg',
-      })
-    );
+    it('should redirect to google_auth_failed when no code is returned', async () => {
+      const res = await withState(
+        request(app).get('/api/auth/google/callback').query({ state: STATE })
+      );
 
-    const res = await request(app)
-      .post('/api/auth/google')
-      .send({
-        access_token: 'fake-google-access-token',
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(`${process.env.FRONTEND_URL}/login?error=google_auth_failed`);
+    });
+
+    it('should redirect to google_auth_failed when the token exchange with Google fails', async () => {
+      mockGoogleExchange({ tokenOk: false });
+
+      const res = await withState(
+        request(app).get('/api/auth/google/callback').query({ state: STATE, code: 'auth-code' })
+      );
+
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(`${process.env.FRONTEND_URL}/login?error=google_auth_failed`);
+    });
+
+    it('should redirect to google_auth_failed when the userinfo request fails', async () => {
+      mockGoogleExchange({ userinfoOk: false });
+
+      const res = await withState(
+        request(app).get('/api/auth/google/callback').query({ state: STATE, code: 'auth-code' })
+      );
+
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(`${process.env.FRONTEND_URL}/login?error=google_auth_failed`);
+    });
+
+    it('should redirect to google_email_unverified when Google has not verified the email', async () => {
+      mockGoogleExchange({ userPayload: mockGoogleUserPayload({ email_verified: false }) });
+
+      const res = await withState(
+        request(app).get('/api/auth/google/callback').query({ state: STATE, code: 'auth-code' })
+      );
+
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(`${process.env.FRONTEND_URL}/login?error=google_email_unverified`);
+    });
+
+    it('should create a new Google user, set the refresh cookie, and redirect to the frontend', async () => {
+      mockGoogleExchange({
+        userPayload: mockGoogleUserPayload({ email: 'newgoogle@gmail.com', picture: 'https://pic.jpg' }),
       });
 
-    expect(res.statusCode).to.equal(200);
-    expect(res.body).to.have.property('accessToken');
-    expect(res.body.user.email).to.equal('googleuser@gmail.com');
-    expect(res.body.user.authProvider).to.equal('google');
+      const res = await withState(
+        request(app).get('/api/auth/google/callback').query({ state: STATE, code: 'auth-code' })
+      );
 
-    const createdUser = await User.findOne({
-      email: 'googleuser@gmail.com',
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(process.env.FRONTEND_URL);
+      expect(res.headers['set-cookie'].join(';')).to.match(/jwt_refresh=/);
+
+      const createdUser = await User.findOne({ email: 'newgoogle@gmail.com' });
+      expect(createdUser).to.exist;
+      expect(createdUser.authProvider).to.equal('google');
+      expect(createdUser.profilePictureUrl).to.equal('https://pic.jpg');
     });
 
-    expect(createdUser).to.exist;
-    expect(createdUser.authProvider).to.equal('google');
-    expect(createdUser.profilePictureUrl)
-      .to.equal('https://lh3.googleusercontent.com/photo.jpg');
-  });
-
-
-  it('should login existing Google user and update profile picture if changed', async () => {
-
-    await User.create({
-      name: 'Existing Google',
-      email: 'existing@gmail.com',
-      authProvider: 'google',
-      profilePictureUrl: 'https://old-picture.jpg',
-    });
-
-    mockGoogleSuccess(
-      mockGoogleUser({
+    it('should log in an existing Google user and update their profile picture if changed', async () => {
+      await User.create({
         name: 'Existing Google',
         email: 'existing@gmail.com',
-        picture: 'https://new-picture.jpg',
-      })
-    );
-
-    const res = await request(app)
-      .post('/api/auth/google')
-      .send({
-        access_token: 'fake-google-access-token',
+        authProvider: 'google',
+        profilePictureUrl: 'https://old-picture.jpg',
       });
 
-    expect(res.statusCode).to.equal(200);
-    expect(res.body).to.have.property('accessToken');
+      mockGoogleExchange({
+        userPayload: mockGoogleUserPayload({
+          name: 'Existing Google',
+          email: 'existing@gmail.com',
+          picture: 'https://new-picture.jpg',
+        }),
+      });
 
-    const updatedUser = await User.findOne({
-      email: 'existing@gmail.com',
+      const res = await withState(
+        request(app).get('/api/auth/google/callback').query({ state: STATE, code: 'auth-code' })
+      );
+
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(process.env.FRONTEND_URL);
+
+      const updatedUser = await User.findOne({ email: 'existing@gmail.com' });
+      expect(updatedUser.profilePictureUrl).to.equal('https://new-picture.jpg');
     });
 
-    expect(updatedUser).to.exist;
-    expect(updatedUser.profilePictureUrl)
-      .to.equal('https://new-picture.jpg');
-  });
-
-
-  it('should block Google login if email is registered as local account', async () => {
-
-    await request(app)
-      .post('/api/auth/signup')
-      .send({
+    it('should redirect to email_provider_conflict when the email is already registered with a password', async () => {
+      await request(app).post('/api/auth/signup').send({
         name: 'Local User',
         email: 'local@example.com',
         password: 'Password123!',
         confirmPassword: 'Password123!',
       });
 
-    mockGoogleSuccess(
-      mockGoogleUser({
-        name: 'Local User',
-        email: 'local@example.com',
-        picture: 'https://picture.jpg',
-      })
-    );
-
-    const res = await request(app)
-      .post('/api/auth/google')
-      .send({
-        access_token: 'fake-google-access-token',
+      mockGoogleExchange({
+        userPayload: mockGoogleUserPayload({ name: 'Local User', email: 'local@example.com' }),
       });
 
-    expect(res.statusCode).to.equal(400);
-    expect(res.body.message)
-      .to.match(/registered with a password/i);
-  });
+      const res = await withState(
+        request(app).get('/api/auth/google/callback').query({ state: STATE, code: 'auth-code' })
+      );
 
-
-  it('should block suspended Google user from logging in', async () => {
-
-    await User.create({
-      name: 'Banned Google',
-      email: 'banned@gmail.com',
-      authProvider: 'google',
-      status: 'banned',
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(`${process.env.FRONTEND_URL}/login?error=email_provider_conflict`);
     });
 
-    mockGoogleSuccess(
-      mockGoogleUser({
+    it('should redirect to account_banned for a banned Google user', async () => {
+      await User.create({
         name: 'Banned Google',
         email: 'banned@gmail.com',
-        picture: 'https://picture.jpg',
-      })
-    );
-
-    const res = await request(app)
-      .post('/api/auth/google')
-      .send({
-        access_token: 'fake-google-access-token',
+        authProvider: 'google',
+        status: 'banned',
       });
 
-    expect(res.statusCode).to.equal(403);
-    expect(res.body.message).to.match(/banned/i);
-  });
-
-
-  it('should return 400 if no access_token is provided', async () => {
-
-    const res = await request(app)
-      .post('/api/auth/google')
-      .send({});
-
-    expect(res.statusCode).to.equal(400);
-    expect(res.body.message).to.match(/missing/i);
-  });
-
-
-  it('should return 401 if Google token is invalid', async () => {
-
-    mockGoogleFailure(401);
-
-    const res = await request(app)
-      .post('/api/auth/google')
-      .send({
-        access_token: 'bad-google-token',
+      mockGoogleExchange({
+        userPayload: mockGoogleUserPayload({ name: 'Banned Google', email: 'banned@gmail.com' }),
       });
 
-    expect(res.statusCode).to.equal(401);
-    expect(res.body.message)
-      .to.match(/invalid|expired|authentication failed/i);
-  });
+      const res = await withState(
+        request(app).get('/api/auth/google/callback').query({ state: STATE, code: 'auth-code' })
+      );
 
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(`${process.env.FRONTEND_URL}/login?error=account_banned`);
+    });
 
-  it('should return 401 if Google userinfo request fails', async () => {
-
-    mockGoogleFailure(500);
-
-    const res = await request(app)
-      .post('/api/auth/google')
-      .send({
-        access_token: 'google-server-error-token',
+    it('should redirect an admin Google user to the admin panel', async () => {
+      await User.create({
+        name: 'Admin Google',
+        email: 'admingoogle@gmail.com',
+        authProvider: 'google',
+        role: 'admin',
       });
 
-    expect(res.statusCode).to.equal(401);
-  });
-
-
-  it('should return 401 if Google email is not verified', async () => {
-
-    mockGoogleSuccess(
-      mockGoogleUser({
-        email: 'unverified@gmail.com',
-        email_verified: false,
-      })
-    );
-
-    const res = await request(app)
-      .post('/api/auth/google')
-      .send({
-        access_token: 'unverified-google-token',
+      mockGoogleExchange({
+        userPayload: mockGoogleUserPayload({ name: 'Admin Google', email: 'admingoogle@gmail.com' }),
       });
 
-    expect(res.statusCode).to.equal(401);
-    expect(res.body.message)
-      .to.match(/not verified/i);
-  });
+      const res = await withState(
+        request(app).get('/api/auth/google/callback').query({ state: STATE, code: 'auth-code' })
+      );
 
-});
+      expect(res.statusCode).to.equal(302);
+      expect(res.headers.location).to.equal(`${process.env.FRONTEND_URL}/admin`);
+    });
+  });
 });

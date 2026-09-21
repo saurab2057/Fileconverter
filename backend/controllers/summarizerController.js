@@ -15,15 +15,8 @@ import {
 import { validateFileSecurity } from '../utils/fileSecurity.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const AI_SERVICE_URL = process.env.AI_SUMMARIZE_URL || 'http://localhost:8000/summarize';
 const PDF_WORKER_TIMEOUT_MS = 12000; // 12s (worker has internal 8s)
 
-/**
- * Run PDF text extraction in a worker thread.
- * @param {Buffer} buffer - PDF file buffer
- * @param {number} maxPages - Maximum pages to process
- * @returns {Promise<{text: string, totalPages: number, pagesProcessed: number}>}
- */
 const runPdfWorker = (buffer, maxPages) => {
   return new Promise((resolve, reject) => {
     const workerPath = path.resolve(__dirname, '../workers/pdfWorker.js');
@@ -146,7 +139,7 @@ export const handleSummarization = async (req, res) => {
     // CALL AI SERVICE
     // ─────────────────────────────────────────────────────────────
     const aiResponse = await axios.post(
-      AI_SERVICE_URL,
+      `${process.env.AI_SERVICE_URL}/summarize`,
       { text: inputText },
       {
         timeout: 40000,

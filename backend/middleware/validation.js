@@ -1,7 +1,4 @@
 import { body, query, validationResult } from 'express-validator';
-import User from '../models/User.js';
-
-
 // ─────────────────────────────────────────────────────────────
 // INPUT VALIDATION: USER UPDATE (admin only)
 // Prevents privilege escalation by blocking role/status fields

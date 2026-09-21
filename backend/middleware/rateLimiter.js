@@ -71,7 +71,7 @@ export const chatLimiter = rateLimit({
   windowMs: 60 * 1000,           // 1 minute window
   max: 10,                        // 10 chat messages per minute per user
   skip: (req) => isTest() || !req.user || !req.user._id,
-  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req),
+  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req.ip),
   message: { message: 'Chat rate limit exceeded. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -87,7 +87,7 @@ export const summarizeLimiter = rateLimit({
   windowMs: 60 * 1000,           // 1 minute window
   max: 5,                         // 5 summarization requests per minute per user
   skip: (req) => isTest() || !req.user || !req.user._id,
-  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req),
+  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req.ip),
   message: { message: 'Summarization limit reached. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -182,9 +182,9 @@ export const passkeyLimiter = rateLimit({
   skip: () => isTest(),
   keyGenerator: (req) => {
     if (req.user?._id) return `user_${req.user._id.toString()}`;
-    return ipKeyGenerator(req);
+    return ipKeyGenerator(req.ip);
   },
-  validate: { trustProxy: false }, // Suppresses IPv6 normalisation warning
+  validate: { trustProxy: false },
   message: { message: 'Too many passkey attempts. Please wait 1 minute.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -240,7 +240,7 @@ export const resetPasswordLimiter = rateLimit({
     // IMPORTANT:
     // Use express-rate-limit's IPv6-safe helper instead of
     // req.ip directly.
-    return ipKeyGenerator(req);
+    return ipKeyGenerator(req.ip);
   },
 
   message: {
