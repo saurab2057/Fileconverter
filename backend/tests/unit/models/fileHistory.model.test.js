@@ -2,8 +2,8 @@
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { expect } from 'chai';
-import FileHistory from '../../models/FileHistory.js';
-import User from '../../models/User.js';
+import FileHistory from '../../../models/FileHistory.js';
+import User from '../../../models/User.js';
 
 describe('FileHistory Model - Unit Tests', () => {
     let mongoServer;

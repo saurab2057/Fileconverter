@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { expect } from 'chai';
 import bcrypt from 'bcrypt';
-import User from '../../models/User.js';
+import User from '../../../models/User.js';
 
 describe('User Model - Unit Tests', () => {
     let mongoServer;

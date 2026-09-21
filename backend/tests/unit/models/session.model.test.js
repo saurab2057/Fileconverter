@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { expect } from 'chai';
-import Session from '../../models/Session.js';
-import User from '../../models/User.js';
+import Session from '../../../models/Session.js';
+import User from '../../../models/User.js';
 
 describe('Session Model - Unit Tests', () => {
     let mongoServer;

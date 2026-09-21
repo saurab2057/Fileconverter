@@ -2,8 +2,8 @@
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { expect } from 'chai';
-import AuditLog from '../../models/AuditLog.js';
-import User from '../../models/User.js';
+import AuditLog from '../../../models/AuditLog.js';
+import User from '../../../models/User.js';
 
 describe('AuditLog Model - Unit Tests', () => {
     let mongoServer;

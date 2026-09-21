@@ -2,8 +2,8 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { expect } from 'chai';
 
-import Passkey from '../../models/Passkey.js';
-import User from '../../models/User.js';
+import Passkey from '../../../models/Passkey.js';
+import User from '../../../models/User.js';
 
 describe('Passkey Model - Unit Tests', () => {
     let mongoServer;

@@ -2,7 +2,7 @@
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { expect } from 'chai';
-import Config from '../../models/Config.js';
+import Config from '../../../models/Config.js';
 
 describe('Config Model - Unit Tests', () => {
     let mongoServer;
