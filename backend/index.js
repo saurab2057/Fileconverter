@@ -36,7 +36,7 @@ function validateEnvironmentVariables() {
 
     const optionalWarnings = [
         { key: 'HF_TOKEN', msg: 'Hugging Face token missing – AI features will be disabled' },
-        { key: 'AI_SUMMARIZE_URL', msg: 'AI summarization service URL missing' },
+        { key: 'AI_SERVICE_URL', msg: 'AI service(summarization/chatbot) URL missing' },
         { key: 'RP_NAME', msg: 'WebAuthn RP_NAME is not set' },
         { key: 'RP_ID', msg: 'WebAuthn RP_ID is not set' },
         { key: 'RP_ORIGIN', msg: 'WebAuthn RP_ORIGIN is not set' },
