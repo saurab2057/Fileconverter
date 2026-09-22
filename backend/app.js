@@ -46,6 +46,8 @@ if (process.env.NODE_ENV === 'production') {
             ips: req.ips,
             xForwardedFor: req.headers['x-forwarded-for'],
             xRealIp: req.headers['x-real-ip'],
+            cfConnectingIp: req.headers['cf-connecting-ip'],
+            cfRay: req.headers['cf-ray'],
         });
 
         next();
