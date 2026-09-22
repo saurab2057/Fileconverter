@@ -1,6 +1,7 @@
 // middleware/waf.js
 import AuditLog from '../models/AuditLog.js';
 import { hashIP } from '../utils/authSecurity.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 // ─────────────────────────────────────────────────────────────
 // WAF — Web Application Firewall Middleware
@@ -220,7 +221,7 @@ const maskSensitive = (str) => {
 // AUDIT LOG HELPER
 // ─────────────────────────────────────────────────────────────
 const logBlockedRequest = (req, attackType, details) => {
-    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    const ip = getClientIp(req);
     const userAgent = req.get('user-agent') || 'unknown';
     const safeDetails = maskSensitive(details);
 

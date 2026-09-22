@@ -6,6 +6,7 @@ import Session from '../../models/Session.js';
 import { saveUserMetadata } from '../../middleware/collectUserMetadata.js';
 import { hashIP, generateJti, generateDeviceId } from '../../utils/authSecurity.js';
 import { logUserActivity } from '../../middleware/auditLogger.js';
+import { getClientIp } from '../../utils/clientIp.js';
 
 // ─────────────────────────────────────────────────────────────
 // CORE HELPER: handleLoginSuccess
@@ -42,7 +43,7 @@ export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) =>
       { expiresIn: refreshTokenExpiry }
     );
 
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const ip = getClientIp(req);
     const userAgent = req.get('user-agent') || 'unknown';
     const deviceId = generateDeviceId(req);
 
@@ -257,7 +258,7 @@ export const signup = async (req, res) => {
     const user = new User({ email: normalizedEmail, password, name });
     await user.save();
 
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const ip = getClientIp(req);
     const userAgent = req.get('user-agent') || 'unknown';
 
     await logUserActivity(

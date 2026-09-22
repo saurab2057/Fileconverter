@@ -3,7 +3,7 @@ import User from '../../models/User.js';
 import Session from '../../models/Session.js';
 import { hashIP, generateJti, isTokenValidAfterChange } from '../../utils/authSecurity.js';
 import { logUserActivity } from '../../middleware/auditLogger.js';
-
+import { getClientIp } from '../../utils/clientIp.js';
 // ────────────────────────────────────────────────────────────
 // REFRESH TOKEN
 //
@@ -85,7 +85,7 @@ export const refreshToken = async (req, res) => {
         );
 
         // Step 6: Update session with new JTI and metadata
-        const ip = req.ip || req.socket.remoteAddress || '';
+        const ip = getClientIp(req);
         const userAgent = req.get('user-agent') || 'unknown';
         await Session.findOneAndUpdate(
             { user: user._id, deviceId },
@@ -211,7 +211,7 @@ export const logoutAllDevices = async (req, res) => {
             path:     '/'
         });
 
-        const ip = req.ip || req.socket.remoteAddress || '';
+        const ip = getClientIp(req);
         // ✅ FIX: target is string, details is object
         await logUserActivity(
             userId,
@@ -305,7 +305,7 @@ export const revokeSession = async (req, res) => {
             return res.status(404).json({ message: 'Session not found.' });
         }
 
-        const ip = req.ip || req.socket.remoteAddress || '';
+        const ip = getClientIp(req);
         await logUserActivity(
             userId,
             'SESSION_REVOKED',

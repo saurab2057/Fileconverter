@@ -9,6 +9,7 @@ import Session from '../models/Session.js';
 import mongoose from 'mongoose';
 import { logAdminAction } from '../middleware/auditLogger.js';
 import UserMetadata from '../models/UserMetadata.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 // --- GET DASHBOARD STATS ---
 export const getDashboardStats = async (req, res) => {
@@ -204,7 +205,7 @@ export const updateUser = async (req, res) => {
             'USER_UPDATED',
             `User:${id}`,
             changes,
-            req.ip,
+            getClientIp(req),
             req.get('user-agent')
         );
 
@@ -292,7 +293,7 @@ export const updateConfig = async (req, res) => {
             'CONFIG_UPDATED',
             'Config:main',
             changes,
-            req.ip,
+            getClientIp(req),
             req.get('user-agent')
         );
 
@@ -429,7 +430,7 @@ export const deleteUser = async (req, res) => {
             'USER_DELETED',
             `User:${id}`,
             { deletedUser: user.email, name: user.name },
-            req.ip,
+            getClientIp(req),
             req.get('user-agent')
         );
 

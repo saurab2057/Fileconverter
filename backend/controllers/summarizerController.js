@@ -13,6 +13,7 @@ import {
   sanitizeAiResponse
 } from '../utils/aiSecurity.js';
 import { validateFileSecurity } from '../utils/fileSecurity.js';
+import { getClientIp } from '../utils/clientIp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PDF_WORKER_TIMEOUT_MS = 12000; // 12s (worker has internal 8s)
@@ -94,7 +95,7 @@ export const handleSummarization = async (req, res) => {
         // (mirrors the check already applied to the plain-text input path below —
         // this branch was previously missing it entirely)
         if (containsForbiddenPatterns(inputText, SUMMARIZER_FORBIDDEN_PATTERNS)) {
-          console.warn(`[SECURITY BLOCK] Forbidden pattern in PDF-extracted text from IP: ${req.ip}`);
+          console.warn(`[SECURITY BLOCK] Forbidden pattern in PDF-extracted text from IP: ${getClientIp(req)}`);
           return res.status(403).json({
             message: 'PDF content contains blocked patterns. Please use a different file.'
           });
@@ -112,7 +113,7 @@ export const handleSummarization = async (req, res) => {
     } else if (req.body.text) {
       const sanitized = sanitizeInput(req.body.text);
       if (containsForbiddenPatterns(sanitized, SUMMARIZER_FORBIDDEN_PATTERNS)) {
-        console.warn(`[SECURITY BLOCK] Forbidden pattern in summarization text from IP: ${req.ip}`);
+        console.warn(`[SECURITY BLOCK] Forbidden pattern in summarization text from IP: ${getClientIp(req)}`);
         return res.status(403).json({
           message: 'Text contains blocked patterns. Please rephrase.'
         });

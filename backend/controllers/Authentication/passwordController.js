@@ -4,7 +4,7 @@ import User from '../../models/User.js';
 import Session from '../../models/Session.js';
 import { Resend } from 'resend';
 import { logUserActivity } from '../../middleware/auditLogger.js';
-
+import { getClientIp } from '../../utils/clientIp.js';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ─────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ export const forgotPassword = async (req, res) => {
                        </p>`
             });
 
-            const ip = req.ip || req.socket.remoteAddress || '';
+            const ip = getClientIp(req);
             await logUserActivity(
                 user._id,
                 'PASSWORD_RESET_REQUESTED',
@@ -188,7 +188,7 @@ export const resetPassword = async (req, res) => {
         // Revoke all sessions after password change
         await Session.deleteMany({ user: decoded.userId });
 
-        const ip = req.ip || req.socket.remoteAddress || '';
+        const ip = getClientIp(req);
         await logUserActivity(
             decoded.userId,
             'PASSWORD_RESET_COMPLETED',

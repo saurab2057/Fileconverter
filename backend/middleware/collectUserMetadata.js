@@ -5,6 +5,10 @@ import net from 'net';
 import { hashIP } from '../utils/authSecurity.js';
 import UserMetadata from '../models/UserMetadata.js';
 
+// Centralized client IP extraction is used here so geo-location and metadata
+// use the same real client IP as the security/rate-limiting layer.
+import { getClientIp } from '../utils/clientIp.js';
+
 
 // ─────────────────────────────────────────────────────────────
 // CONFIG
@@ -84,14 +88,6 @@ const geoCircuit = {
 // ─────────────────────────────────────────────────────────────
 // IP HELPERS
 // ─────────────────────────────────────────────────────────────
-
-// Takes the leftmost IP from X-Forwarded-For — that is the original
-// client IP when Express trust proxy is set to 1 in app.js.
-function extractClientIP(req) {
-    // Use re.ip - Express computes it correctly (trust proxy is set to 1 in app.js)
-    return req.ip || req.socket.remoteAddress || '';
-
-}
 
 function isPrivateIP(ip) {
     return (
@@ -177,7 +173,7 @@ export async function saveUserMetadata(req, userId) {
     if (process.env.NODE_ENV === 'test') return;
 
     try {
-        const ip = extractClientIP(req);
+        const ip = getClientIp(req);
 
         if (!isValidPublicIP(ip)) {
             console.log('[GEO] Skipping non-public IP');

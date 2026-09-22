@@ -7,6 +7,10 @@ import {
   sanitizeAiResponse
 } from '../utils/aiSecurity.js';
 
+// Use the centralized client IP because this security log needs the
+// actual client IP rather than Render's internal proxy IP.
+import { getClientIp } from '../utils/clientIp.js';
+
 export const handleChat = async (req, res) => {
   const { message } = req.body;
 
@@ -28,7 +32,7 @@ export const handleChat = async (req, res) => {
 
   // 🔒 BLOCK PROMPT INJECTION ATTEMPTS
   if (containsForbiddenPatterns(sanitizedMessage, CHAT_FORBIDDEN_PATTERNS)) {
-    console.warn(`[SECURITY BLOCK] Prompt injection attempt blocked from IP: ${req.ip}`);
+    console.warn(`[SECURITY BLOCK] Prompt injection attempt blocked from IP: ${getClientIp(req)}`);
     return res.status(403).json({
       error: 'Message contains blocked patterns. Please rephrase your query.'
     });

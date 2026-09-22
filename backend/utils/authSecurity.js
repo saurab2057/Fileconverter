@@ -1,5 +1,6 @@
+// backend/utils/authSecurity.js
 import crypto from 'crypto';
-
+import {getClientIp} from './clientIp.js';
 
 // ─────────────────────────────────────────────────────────────
 // IP HASHING
@@ -77,7 +78,7 @@ export const generateJti = () => {
 //   All authorisation still happens via JWT and refresh token rotation.
 // ─────────────────────────────────────────────────────────────
 export const generateDeviceId = (req) => {
-    const ip = req.ip || req.socket?.remoteAddress || '';
+    const ip = getClientIp(req);
     const userAgent = req.get('user-agent') || '';
     const raw = `${ip}|${userAgent}`;
     return crypto.createHash('sha256').update(raw).digest('hex');

@@ -13,7 +13,8 @@ import { handleLoginSuccess } from './authController.js';
 import { logUserActivity } from '../../middleware/auditLogger.js';
 import { saveUserMetadata } from '../../middleware/collectUserMetadata.js';
 import { UAParser } from 'ua-parser-js';
-
+// Use the centralized client IP because this security log needs the
+import { getClientIp } from '../../utils/clientIp.js';
 
 // ─────────────────────────────────────────────────────────────
 // WEBAUTHN VERIFIERS
@@ -116,12 +117,6 @@ const getDeviceName = (userAgent) => {
   const o = os.name || 'Unknown';
   return `${b} on ${o}`;
 };
-
-const getClientIP = (req) => {
-    // ✅ Use req.ip – Express computes it correctly (trust proxy is set)
-    return req.ip || req.socket?.remoteAddress || 'unknown';
-};
-
 
 // ─────────────────────────────────────────────────────────────
 // START REGISTRATION
@@ -288,7 +283,7 @@ export const verifyRegistration = async (req, res) => {
       'PASSKEY_REGISTERED',
       `Passkey:${credential.id.substring(0, 16)}...`,
       { deviceType, deviceName, label: passkey.label },
-      getClientIP(req),
+      getClientIp(req),
       userAgent
     );
 
@@ -430,7 +425,7 @@ export const verifyAuthentication = async (req, res) => {
         'PASSKEY_LOGIN_FAILED',
         `User:${userId}`,
         { reason: 'credential_not_found', credentialID: response.id },
-        getClientIP(req),
+        getClientIp(req),
         req.get('user-agent') || ''
       );
       return res.status(401).json({ message: 'Passkey not recognised for this account.' });
@@ -459,7 +454,7 @@ export const verifyAuthentication = async (req, res) => {
         'PASSKEY_LOGIN_FAILED',
         `User:${userId}`,
         { reason: 'verification_error', error: verifyError.message },
-        getClientIP(req),
+        getClientIp(req),
         req.get('user-agent') || ''
       );
       return res.status(401).json({ message: 'Passkey verification failed. Please try again.' });
@@ -473,7 +468,7 @@ export const verifyAuthentication = async (req, res) => {
         'PASSKEY_LOGIN_FAILED',
         `User:${userId}`,
         { reason: 'not_verified' },
-        getClientIP(req),
+        getClientIp(req),
         req.get('user-agent') || ''
       );
       return res.status(401).json({ message: 'Passkey verification failed.' });
@@ -493,7 +488,7 @@ export const verifyAuthentication = async (req, res) => {
       'PASSKEY_LOGIN',
       `User:${userId}`,
       { deviceType: passkey.deviceType, deviceName: passkey.deviceName, label: passkey.label },
-      getClientIP(req),
+      getClientIp(req),
       req.get('user-agent') || ''
     );
 
@@ -568,7 +563,7 @@ export const deletePasskey = async (req, res) => {
       'PASSKEY_DELETED',
       `Passkey:${passkeyId}`,
       { deviceType: passkey.deviceType, deviceName: passkey.deviceName, label: passkey.label },
-      getClientIP(req),
+      getClientIp(req),
       req.get('user-agent') || ''
     );
 
@@ -624,7 +619,7 @@ export const updatePasskeyLabel = async (req, res) => {
       'PASSKEY_RENAMED',
       `Passkey:${passkeyId}`,
       { newLabel: passkey.label, deviceName: passkey.deviceName },
-      getClientIP(req),
+      getClientIp(req),
       req.get('user-agent') || ''
     );
 
