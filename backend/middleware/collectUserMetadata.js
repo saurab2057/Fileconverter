@@ -36,15 +36,20 @@ const geoCache = new Map();
 function getCachedGeo(ip) {
     const entry = geoCache.get(ip);
     if (!entry) return null;
+
     if (Date.now() > entry.expiry) {
         geoCache.delete(ip);
         return null;
     }
+
     return entry.data;
 }
 
 function setCachedGeo(ip, data) {
-    geoCache.set(ip, { data, expiry: Date.now() + GEO_CACHE_TTL_MS });
+    geoCache.set(ip, {
+        data,
+        expiry: Date.now() + GEO_CACHE_TTL_MS,
+    });
 }
 
 
@@ -61,12 +66,14 @@ const geoCircuit = {
 
     isOpen() {
         if (!this.openUntil) return false;
+
         if (Date.now() > this.openUntil) {
             this.failures = 0;
             this.openUntil = null;
             console.log('🔁 [GEO] Circuit closed (cooldown elapsed)');
             return false;
         }
+
         return true;
     },
 
@@ -77,9 +84,13 @@ const geoCircuit = {
 
     recordFailure() {
         this.failures++;
+
         if (this.failures >= GEO_FAILURE_THRESHOLD) {
             this.openUntil = Date.now() + GEO_COOLDOWN_MS;
-            console.warn(`⚡ [GEO] Circuit OPEN for ${GEO_COOLDOWN_MS / 1000}s`);
+
+            console.warn(
+                `⚡ [GEO] Circuit OPEN for ${GEO_COOLDOWN_MS / 1000}s`
+            );
         }
     },
 };
@@ -107,33 +118,80 @@ function isValidPublicIP(ip) {
 // ─────────────────────────────────────────────────────────────
 // GEO LOOKUP
 // ─────────────────────────────────────────────────────────────
-const EMPTY_LOCATION = { country: '', region: '', city: '' };
+
+const EMPTY_GEO = {
+    location: {
+        country: '',
+        region: '',
+        city: '',
+    },
+
+    network: {
+        isp: '',
+        organization: '',
+        asn: '',
+        connectionType: '',
+        isProxy: false,
+        isVpn: false,
+        isTor: false,
+        isHosting: false,
+    },
+
+    timezone: '',
+};
+
+function normalizeGeoResponse(data) {
+    return {
+        location: {
+            country: data.country || '',
+            region: data.region || '',
+            city: data.city || '',
+        },
+
+        network: {
+            isp: data.connection?.isp || '',
+            organization: data.connection?.org || '',
+            asn: data.connection?.asn || '',
+            connectionType: data.connection?.type || '',
+
+            isProxy: data.security?.proxy ?? false,
+            isVpn: data.security?.vpn ?? false,
+            isTor: data.security?.tor ?? false,
+            isHosting: data.security?.hosting ?? false,
+        },
+
+        timezone: data.timezone?.id || '',
+    };
+}
 
 async function fetchGeoLocation(ip) {
     const cached = getCachedGeo(ip);
+
     if (cached) return cached;
 
-    if (geoCircuit.isOpen()) return EMPTY_LOCATION;
+    if (geoCircuit.isOpen()) {
+        return EMPTY_GEO;
+    }
 
     const url = `https://ipwho.is/${ip}`;
 
     try {
-        const res = await axios.get(url, { timeout: GEO_TIMEOUT_MS, maxRedirects: 2 });
+        const res = await axios.get(url, {
+            timeout: GEO_TIMEOUT_MS,
+            maxRedirects: 2,
+        });
 
         if (!res.data?.success) {
             geoCircuit.recordFailure();
-            return EMPTY_LOCATION;
+            return EMPTY_GEO;
         }
 
-        const location = {
-            country: res.data.country || '',
-            region: res.data.region || '',
-            city: res.data.city || '',
-        };
+        const geo = normalizeGeoResponse(res.data);
 
         geoCircuit.recordSuccess();
-        setCachedGeo(ip, location);
-        return location;
+        setCachedGeo(ip, geo);
+
+        return geo;
 
     } catch {
         geoCircuit.recordFailure();
@@ -141,23 +199,24 @@ async function fetchGeoLocation(ip) {
         // Single retry — only if the failure didn't trip the circuit open
         if (!geoCircuit.isOpen()) {
             try {
-                const retry = await axios.get(url, { timeout: 2000 });
+                const retry = await axios.get(url, {
+                    timeout: 2000,
+                });
+
                 if (retry.data?.success) {
-                    const location = {
-                        country: retry.data.country || '',
-                        region: retry.data.region || '',
-                        city: retry.data.city || '',
-                    };
+                    const geo = normalizeGeoResponse(retry.data);
+
                     geoCircuit.recordSuccess();
-                    setCachedGeo(ip, location);
-                    return location;
+                    setCachedGeo(ip, geo);
+
+                    return geo;
                 }
             } catch {
-                // Retry also failed — fall through to EMPTY_LOCATION
+                // Retry also failed — fall through to EMPTY_GEO
             }
         }
 
-        return EMPTY_LOCATION;
+        return EMPTY_GEO;
     }
 }
 
@@ -185,19 +244,26 @@ export async function saveUserMetadata(req, userId) {
         parser.setUA(userAgent);
         const ua = parser.getResult();
 
-        const location = await fetchGeoLocation(ip);
+        const geo = await fetchGeoLocation(ip);
 
         // hashIP applies IP_HASH_SALT internally (see authSecurity.js).
         // Do NOT concatenate the salt here — that was the previous bug
         // that caused the same IP to hash differently across collections.
         const update = {
             ipHash: hashIP(ip),
-            location,
+
+            location: geo.location,
+
+            network: geo.network,
+
+            timezone: geo.timezone,
+
             device: {
                 type: ua.device.type || 'desktop',
                 browser: ua.browser.name || '',
                 os: ua.os.name || '',
             },
+
             userAgent,
         };
 
@@ -207,9 +273,14 @@ export async function saveUserMetadata(req, userId) {
             { upsert: true, new: true }
         );
 
-        console.log(`Metadata saved: ${doc._id} | ${location.city || 'unknown'}`);
+        console.log(
+            `Metadata saved: ${doc._id} | ${geo.location.city || 'unknown'}`
+        );
 
     } catch (err) {
-        console.error('Metadata save failed (non-fatal):', err.message);
+        console.error(
+            'Metadata save failed (non-fatal):',
+            err.message
+        );
     }
 }

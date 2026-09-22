@@ -27,11 +27,10 @@ const RoleBadge = ({ role }) => {
     const isAdmin = role === 'admin';
     return (
         <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset transition-all ${
-                isAdmin
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset transition-all ${isAdmin
                     ? 'bg-amber-50 text-amber-700 ring-amber-200'
                     : 'bg-slate-100 text-slate-600 ring-slate-200'
-            }`}
+                }`}
         >
             <Shield className="h-3 w-3" />
             {isAdmin ? 'Admin' : 'User'}
@@ -43,11 +42,10 @@ const StatusBadge = ({ status }) => {
     const isBanned = status === 'banned';
     return (
         <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset transition-all ${
-                isBanned
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset transition-all ${isBanned
                     ? 'bg-rose-50 text-rose-700 ring-rose-200'
                     : 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-            }`}
+                }`}
         >
             {isBanned ? <Ban className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
             {isBanned ? 'Banned' : 'Active'}
@@ -68,9 +66,8 @@ const InfoRow = ({ icon, label, value, mono = false, capitalize = false }) => (
             </span>
         </div>
         <span
-            className={`min-w-0 break-all text-left font-semibold text-slate-800 ${
-                mono ? 'font-mono text-xs text-slate-600' : 'text-[13px]'
-            } ${capitalize ? 'capitalize' : ''}`}
+            className={`min-w-0 break-all text-left font-semibold text-slate-800 ${mono ? 'font-mono text-xs text-slate-600' : 'text-[13px]'
+                } ${capitalize ? 'capitalize' : ''}`}
         >
             {display(value)}
         </span>
@@ -127,9 +124,8 @@ const QuickStat = ({ icon, label, value, mono = false, accent = 'slate' }) => {
                 <span>{label}</span>
             </div>
             <p
-                className={`mt-2 break-all text-sm font-bold text-slate-800 ${
-                    mono ? 'font-mono text-xs text-slate-600' : ''
-                }`}
+                className={`mt-2 break-all text-sm font-bold text-slate-800 ${mono ? 'font-mono text-xs text-slate-600' : ''
+                    }`}
             >
                 {display(value)}
             </p>
@@ -211,7 +207,7 @@ const UserDetails = () => {
 
                 setError(
                     err.response?.data?.message ||
-                        'Failed to load user details.'
+                    'Failed to load user details.'
                 );
             } finally {
                 if (mounted) {
@@ -313,6 +309,7 @@ const UserDetails = () => {
 
     const device = metadata?.device || {};
     const location = metadata?.location || {};
+    const network = metadata?.network || {};
 
     return (
         <div className="min-h-screen bg-slate-50/50 p-6 lg:p-8">
@@ -505,39 +502,73 @@ const UserDetails = () => {
                             value={metadata?.ipHash}
                             mono
                         />
+
+                        <InfoRow
+                            icon={<Globe className="h-4 w-4" />}
+                            label="ISP"
+                            value={network.isp}
+                        />
+
+                        <InfoRow
+                            icon={<Globe className="h-4 w-4" />}
+                            label="Organization"
+                            value={network.organization}
+                        />
+
+                        <InfoRow
+                            icon={<Hash className="h-4 w-4" />}
+                            label="ASN"
+                            value={network.asn}
+                            mono
+                        />
+
+                        <InfoRow
+                            icon={<Globe className="h-4 w-4" />}
+                            label="Connection"
+                            value={network.connectionType}
+                            capitalize
+                        />
+
+                        <InfoRow
+                            icon={<Globe className="h-4 w-4" />}
+                            label="Proxy"
+                            value={network.isProxy ? 'Detected' : 'No'}
+                        />
+
+                        <InfoRow
+                            icon={<Globe className="h-4 w-4" />}
+                            label="VPN"
+                            value={network.isVpn ? 'Detected' : 'No'}
+                        />
+
+                        <InfoRow
+                            icon={<Globe className="h-4 w-4" />}
+                            label="Tor"
+                            value={network.isTor ? 'Detected' : 'No'}
+                        />
+
+                        <InfoRow
+                            icon={<Globe className="h-4 w-4" />}
+                            label="Hosting"
+                            value={network.isHosting ? 'Detected' : 'No'}
+                        />
+
+                        <InfoRow
+                            icon={<Globe className="h-4 w-4" />}
+                            label="Timezone"
+                            value={metadata?.timezone}
+                        />
+
                         <InfoRow
                             icon={<Globe className="h-4 w-4" />}
                             label="Country"
                             value={location.country}
                         />
+
                         <InfoRow
                             icon={<MapPin className="h-4 w-4" />}
                             label="City"
                             value={location.city}
-                        />
-                    </InfoCard>
-
-                    <InfoCard
-                        icon={<Clock className="h-4 w-4" />}
-                        title="Metadata"
-                        accent="slate"
-                    >
-                        <InfoRow
-                            icon={<Calendar className="h-4 w-4" />}
-                            label="Collected"
-                            value={formatDate(metadata?.createdAt)}
-                        />
-                        <InfoRow
-                            icon={<Hash className="h-4 w-4" />}
-                            label="Metadata ID"
-                            value={metadata?._id}
-                            mono
-                        />
-                        <InfoRow
-                            icon={<User className="h-4 w-4" />}
-                            label="User ID"
-                            value={metadata?.user}
-                            mono
                         />
                     </InfoCard>
                 </div>
