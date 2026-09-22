@@ -28,7 +28,6 @@ import aiRoutes          from './routes/aisummarizerRoute.js';
 import compressionRoutes from './routes/compressionRoute.js';
 import passkeyRoutes     from './routes/passkeyRoute.js';
 
-
 // 🔒 ERROR HANDLING
 import { AppError, globalErrorHandler } from './middleware/errorHandling.js';
 import mongoose from 'mongoose';
@@ -39,34 +38,127 @@ const __dirname  = path.dirname(__filename);
 
 const app = express();
 
+// ─────────────────────────────────────────────────────────────
+// PROXY TRUST
+// ─────────────────────────────────────────────────────────────
+// Render sits behind one trusted proxy layer for Express.
+//
+// IMPORTANT:
+// This does NOT mean we have determined that req.ip is the real
+// end-user IP. The temporary diagnostic endpoint below is being
+// used to inspect the complete proxy/header chain first.
+//
+// We will decide the correct client-IP extraction strategy AFTER
+// testing the actual Vercel → Cloudflare → Render request flow.
+app.set('trust proxy', 1);
+
+
+// ─────────────────────────────────────────────────────────────
+// 🔬 TEMPORARY CLIENT-IP DIAGNOSTICS
+// ─────────────────────────────────────────────────────────────
+//
+// PURPOSE:
+// This block is ONLY for investigating how the real client IP
+// travels through:
+//
+//     Browser → Vercel → Cloudflare → Render → Express
+//
+// We are intentionally logging multiple possible IP sources:
+//     - Express req.ip
+//     - Express req.ips
+//     - socket.remoteAddress
+//     - X-Forwarded-For
+//     - X-Real-IP
+//     - CF-Connecting-IP
+//     - CF-Ray
+//
+// DO NOT use any of these values for security decisions yet.
+//
+// After we determine which header/value represents the actual
+// client IP in the deployed architecture, this temporary block
+// can be completely REMOVED.
+//
+// ⚠️ LATER: REMOVE THIS ENTIRE SECTION after IP investigation.
+// ─────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
     app.use((req, res, next) => {
-        console.log('🔍 IP DEBUG:', {
-            ip: req.ip,
-            ips: req.ips,
-            xForwardedFor: req.headers['x-forwarded-for'],
-            xRealIp: req.headers['x-real-ip'],
-            cfConnectingIp: req.headers['cf-connecting-ip'],
-            cfRay: req.headers['cf-ray'],
+        console.log('🔍 [TEMP IP DEBUG]', {
+            express: {
+                ip: req.ip,
+                ips: req.ips,
+            },
+
+            socket: {
+                remoteAddress: req.socket.remoteAddress,
+            },
+
+            headers: {
+                xForwardedFor: req.headers['x-forwarded-for'],
+                xRealIp: req.headers['x-real-ip'],
+                cfConnectingIp: req.headers['cf-connecting-ip'],
+                cfRay: req.headers['cf-ray'],
+                forwarded: req.headers['forwarded'],
+            },
         });
 
         next();
     });
+
+    // ─────────────────────────────────────────────────────────
+    // 🔬 TEMPORARY CLIENT-IP DEBUG ENDPOINT
+    //
+    // Open this through the deployed Vercel frontend:
+    //
+    // https://fileconverter-mu.vercel.app/api/debug/client-ip
+    //
+    // Test it from:
+    //   1. Phone using mobile data
+    //   2. Desktop using Wi-Fi
+    //
+    // Compare the returned headers to determine which value
+    // represents the actual originating client.
+    //
+    // ⚠️ LATER: REMOVE THIS ENTIRE ENDPOINT after testing.
+    // ─────────────────────────────────────────────────────────
+    app.get('/api/debug/client-ip', (req, res) => {
+        const debugInfo = {
+            express: {
+                ip: req.ip,
+                ips: req.ips,
+            },
+
+            socket: {
+                remoteAddress: req.socket.remoteAddress,
+            },
+
+            headers: {
+                xForwardedFor: req.headers['x-forwarded-for'],
+                xRealIp: req.headers['x-real-ip'],
+                cfConnectingIp: req.headers['cf-connecting-ip'],
+                cfRay: req.headers['cf-ray'],
+                forwarded: req.headers['forwarded'],
+            },
+        };
+
+        console.log('🔬 [TEMP CLIENT-IP DEBUG ENDPOINT]', debugInfo);
+
+        return res.json(debugInfo);
+    });
 }
 
-// ─────────────────────────────────────────────────────────────
-// PROXY TRUST
-// ─────────────────────────────────────────────────────────────
-app.set('trust proxy', 1);
 
 // ─────────────────────────────────────────────────────────────
 // 🔒 FORCE HTTPS IN PRODUCTION
 // ─────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
-  if (process.env.NODE_ENV === 'production' && !req.secure) {
-    return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
-  }
-  next();
+    if (process.env.NODE_ENV === 'production' && !req.secure) {
+        return res.redirect(
+            301,
+            `https://${req.headers.host}${req.originalUrl}`
+        );
+    }
+
+    next();
 });
 
 app.disable('x-powered-by');
@@ -85,52 +177,70 @@ app.use((req, res, next) => {
 // ─────────────────────────────────────────────────────────────
 // ⚠️ EXPRESS 5 WARNING
 //
-//   If you upgrade Express from v4 to v5, the wildcard syntax `'*'`
-//   changes to `'/{*splat}'` for route matching.
+// If you upgrade Express from v4 to v5, the wildcard syntax `'*'`
+// changes to `'/{*splat}'` for route matching.
 //
-//   ❌ Express 4:  app.options('*', cors(corsOptions));
-//   ✅ Express 5:  app.options('/{*splat}', cors(corsOptions));
+// ❌ Express 4:
+// app.options('*', cors(corsOptions));
 //
-//   The same change applies to:
-//     - app.all('/api/*', ...)    →  app.all('/api/{*splat}', ...)
-//     - app.get('*', ...)         →  app.get('/{*splat}', ...)
+// ✅ Express 5:
+// app.options('/{*splat}', cors(corsOptions));
+//
+// The same change applies to:
+//     app.all('/api/*', ...) → app.all('/api/{*splat}', ...)
+//     app.get('*', ...)      → app.get('/{*splat}', ...)
 // ─────────────────────────────────────────────────────────────
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(helmet(helmetOptions));
 
+
 // ─────────────────────────────────────────────────────────────
-// 🔒 PAYLOAD SIZE LIMITS – ROUTE‑SPECIFIC
-//    ORDER MATTERS: more specific routes must come BEFORE
-//    less specific ones. We mount the route‑specific parsers
-//    BEFORE the global parser so Express picks the right one.
+// 🔒 PAYLOAD SIZE LIMITS – ROUTE-SPECIFIC
+//
+// ORDER MATTERS: more specific routes must come BEFORE
+// less specific ones. We mount route-specific parsers
+// BEFORE the global parser so Express picks the right one.
 // ─────────────────────────────────────────────────────────────
 
-// 1. STRICT LIMIT for AUTH routes (15 KB) – login, signup, tokens, etc.
+// 1. STRICT LIMIT for AUTH routes (15 KB)
 app.use('/api/auth', express.json({ limit: '15kb' }));
-// Auth never uses URL‑encoded forms, but if it did, we'd also set:
-// app.use('/api/auth', express.urlencoded({ limit: '15kb', extended: true }));
 
-// 2. ADMIN routes (100 KB) – config updates can be larger
+// Auth never uses URL-encoded forms, but if it did:
+// app.use('/api/auth', express.urlencoded({
+//     limit: '15kb',
+//     extended: true
+// }));
+
+// 2. ADMIN routes (100 KB)
 app.use('/api/admin', express.json({ limit: '100kb' }));
-app.use('/api/admin', express.urlencoded({ limit: '100kb', extended: true }));
+app.use('/api/admin', express.urlencoded({
+    limit: '100kb',
+    extended: true
+}));
 
-// 3. GLOBAL fallback (200 KB) – for all other JSON endpoints
+// 3. GLOBAL fallback (200 KB)
 app.use(express.json({ limit: '200kb' }));
-app.use(express.urlencoded({ limit: '200kb', extended: true }));
+app.use(express.urlencoded({
+    limit: '200kb',
+    extended: true
+}));
+
 
 // ─────────────────────────────────────────────────────────────
-// OTHER MIDDLEWARE (run after body parsing)
+// OTHER MIDDLEWARE
 // ─────────────────────────────────────────────────────────────
 app.use(cookieParser());
+
+
 // ─────────────────────────────────────────────────────────────
 // SAFE REQUEST LOGGING
 //
 // Never log query strings.
+//
 // OAuth codes, reset tokens, state values, session identifiers,
 // API keys, etc. can appear in URLs.
 // ─────────────────────────────────────────────────────────────
-
 morgan.token('safe-url', (req) => req.baseUrl + req.path);
 
 app.use(
@@ -139,15 +249,18 @@ app.use(
     )
 );
 
+
 // ─────────────────────────────────────────────────────────────
 // HEALTH CHECK – before WAF
 // ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
     res.json({
-        status:      'ok',
-        uptime:      process.uptime(),
-        db:          mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-        timestamp:   new Date().toISOString(),
+        status: 'ok',
+        uptime: process.uptime(),
+        db: mongoose.connection.readyState === 1
+            ? 'connected'
+            : 'disconnected',
+        timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || 'development'
     });
 });
@@ -156,33 +269,43 @@ app.get('/api/health', (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // 🔒 GLOBAL WAF – SKIP FOR MULTIPART UPLOAD ROUTES
 //
-//   The global WAF runs on every request EXCEPT these three
-//   path groups:
+// The global WAF runs on every request EXCEPT these three
+// path groups:
+//
 //     - /api/convert/*
 //     - /api/compress/*
 //     - /api/ai/*
 //
-//   Why we skip them at the GLOBAL level:
-//   ─────────────────────────────────────────────
-//   1. These endpoints handle file uploads using `multipart/form-data`.
-//   2. At this point (before multer runs), `req.body` is EMPTY.
-//      → The global WAF would scan nothing useful.
-//   3. Scanning raw multipart payloads (binary data) can cause
-//      false positives and unnecessary CPU overhead.
-//   4. The global WAF's injection/XSS checks rely on parsed fields
-//      (JSON keys/values) – which don't exist yet.
+// Why we skip them at the GLOBAL level:
 //
-//   How these routes are STILL protected:
-//   ─────────────────────────────────────────────
-//   - Each route applies the WAF **after** multer has parsed the
-//     request (see route files: compressionRoute.js, conversionRoute.js,
-//     aisummarizerRoute.js).
-//   - The route‑level WAF scans the actual `req.body` fields
-//     (e.g., `settings`, `toFormat`) – which is what matters.
-//   - Additionally, the controllers call `validateFileSecurity()`
-//     for deep file‑level checks (steganography, entropy, etc.).
+// 1. These endpoints handle file uploads using
+//    multipart/form-data.
 //
-//   So: global skip + route‑level WAF = secure and efficient.
+// 2. At this point (before multer runs), req.body is EMPTY.
+//
+// 3. The global WAF would therefore scan nothing useful.
+//
+// 4. Scanning raw multipart payloads containing binary data
+//    can cause false positives and unnecessary CPU overhead.
+//
+// 5. The global WAF's injection/XSS checks rely on parsed
+//    fields, which do not exist yet.
+//
+// How these routes are STILL protected:
+//
+// - Each route applies the WAF after multer has parsed
+//   the request.
+//
+// - The route-level WAF scans actual req.body fields such as
+//   settings and toFormat.
+//
+// - Controllers additionally call validateFileSecurity()
+//   for deep file-level checks such as steganography,
+//   entropy analysis, and related security checks.
+//
+// Therefore:
+//
+//     Global skip + route-level WAF = secure and efficient.
 // ─────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
     if (
@@ -192,6 +315,7 @@ app.use((req, res, next) => {
     ) {
         return next();
     }
+
     return waf(req, res, next);
 });
 
@@ -209,26 +333,39 @@ app.use('/api/admin',     adminRoutes);
 app.use('/api/ai',        aiRoutes);
 app.use('/api/passkeys',  passkeyRoutes);
 
+
 // ─────────────────────────────────────────────────────────────
-// 404 CATCH-ALL HANDLERS (SEPARATE FRONTEND & BACKEND ARCHITECTURE)
+// 404 CATCH-ALL HANDLERS
 //
-// Since the React frontend is hosted separately on Vercel, this Express 
-// server on Render operates purely as a headless REST API.
+// The React frontend is hosted separately on Vercel, so this
+// Express server on Render operates purely as a headless REST API.
 //
-// - Static file serving (`express.static`) and React `index.html` delivery
-//   are removed because Vercel handles all asset delivery and CDN caching.
-// - Route matching uses dual-pattern arrays `['/path/*', '/path/{*splat}']`
-//   to ensure smooth execution across both Express v4 and Express v5.
+// Static file serving and React index.html delivery are removed
+// because Vercel handles frontend assets and CDN caching.
+//
+// Route matching uses dual-pattern arrays to support both
+// Express v4 and Express v5 syntax.
 // ─────────────────────────────────────────────────────────────
 
-// 1. Unmatched API Endpoints: Catches invalid routes under `/api/...`
+// 1. Unmatched API endpoints
 app.all(['/api/*', '/api/{*splat}'], (req, res, next) => {
-    next(new AppError(`API route not found: ${req.originalUrl}`, 404));
+    next(
+        new AppError(
+            `API route not found: ${req.originalUrl}`,
+            404
+        )
+    );
 });
 
-// 2. Global Unmatched Routes: Catches any non-API traffic hitting the Render server directly
+
+// 2. Global unmatched routes
 app.all(['*', '/{*splat}'], (req, res, next) => {
-    next(new AppError(`Route not found on API server: ${req.originalUrl}`, 404));
+    next(
+        new AppError(
+            `Route not found on API server: ${req.originalUrl}`,
+            404
+        )
+    );
 });
 
 
