@@ -39,6 +39,18 @@ const __dirname  = path.dirname(__filename);
 
 const app = express();
 
+if (process.env.NODE_ENV === 'production') {
+    app.use((req, res, next) => {
+        console.log('🔍 IP DEBUG:', {
+            ip: req.ip,
+            ips: req.ips,
+            xForwardedFor: req.headers['x-forwarded-for'],
+            xRealIp: req.headers['x-real-ip'],
+        });
+
+        next();
+    });
+}
 
 // ─────────────────────────────────────────────────────────────
 // PROXY TRUST
