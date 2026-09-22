@@ -1,5 +1,6 @@
 import { Crown, Users, CheckCircle, Ban } from 'lucide-react';
 import UserActions from './UserActions';
+import { useNavigate } from 'react-router-dom';
 
 const getUserTypeBadge = (type = 'user') => {
     const config = {
@@ -41,6 +42,8 @@ const UserTable = ({
     onMutate, onDeleteClick,
     onPageChange
 }) => {
+    const navigate = useNavigate();
+
     return (
         <div className="w-full">
             <div className="overflow-x-auto">
@@ -64,15 +67,26 @@ const UserTable = ({
                         ) : (
                             users.map((user) => (
                                 <tr key={user._id} className={getRowClass(user)}>
-                                    <td className="py-4 px-4">
-                                        <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                                        <div className="text-xs text-gray-500">{user.email}</div>
+                                    <td
+                                        className="py-4 px-4 cursor-pointer"
+                                        onClick={() => navigate(`/admin/users/details/${user._id}`)}
+                                    >
+                                        <div className="text-sm font-medium text-gray-900 hover:text-blue-600">
+                                            {user.name}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                            {user.email}
+                                        </div>
                                     </td>
+
                                     <td className="py-4 px-4">{getUserTypeBadge(user.role)}</td>
+
                                     <td className="py-4 px-4">{getStatusBadge(user.status)}</td>
+
                                     <td className="py-4 px-4 text-sm text-gray-700">
                                         {new Date(user.createdAt).toLocaleDateString()}
                                     </td>
+
                                     <td className="py-4 px-4">
                                         <UserActions
                                             user={user}
@@ -96,20 +110,27 @@ const UserTable = ({
                         Showing {(currentPage - 1) * itemsPerPage + 1} to{' '}
                         {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} users
                     </div>
+
                     <div className="flex space-x-2">
                         <button
                             onClick={() => onPageChange(p => Math.max(1, p - 1))}
                             disabled={!pagination.hasPrev}
                             className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 hover:bg-gray-50 text-sm"
-                        >Previous</button>
+                        >
+                            Previous
+                        </button>
+
                         <span className="px-4 py-2 text-gray-700 text-sm">
                             Page {currentPage} of {pagination.totalPages}
                         </span>
+
                         <button
                             onClick={() => onPageChange(p => Math.min(pagination.totalPages, p + 1))}
                             disabled={!pagination.hasNext}
                             className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 hover:bg-gray-50 text-sm"
-                        >Next</button>
+                        >
+                            Next
+                        </button>
                     </div>
                 </div>
             )}

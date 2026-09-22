@@ -15,6 +15,7 @@ import {
     deleteUser,
     getChainStatus,
     verifyChain,
+    getUserDetails,
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -33,6 +34,9 @@ router.get('/users', getUsers);
 
 // --- UPDATE USER (WITH VALIDATION + FRESH DATA RETURN) ---
 router.put('/users/:id', validateUserUpdate, updateUser);
+
+// --- GET USER DETAILS 
+router.get('/users/details/:id', getUserDetails);
 
 // --- GET SYSTEM CONFIGURATION ---
 router.get('/config', getConfig);

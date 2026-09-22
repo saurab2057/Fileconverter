@@ -9,6 +9,7 @@ import AdminMainLayout from '@/features/adminpages/AdminMainLayout';
 const AdminDashboard = lazy(() => import('@/features/adminpages/AdminDashboard'));
 const JobMonitor = lazy(() => import('@/features/adminpages/JobMonitor'));
 const UserManagement = lazy(() => import('@/features/adminpages/UserManagement'));
+const UserDetails = lazy(() => import('@/features/adminpages/UserManagement/UserDetails'));
 const SystemConfig = lazy(() => import('@/features/adminpages/SystemConfig'));
 const LogsManager = lazy(() => import('@/features/adminpages/logs'));
 
@@ -24,6 +25,7 @@ const AdminRoutes = () => {
     <Routes>
       <Route element={<AdminMainLayout />}>
         <Route index element={<Navigate to="dashboard" replace />} />
+
         <Route
           path="dashboard"
           element={
@@ -32,6 +34,7 @@ const AdminRoutes = () => {
             </Suspense>
           }
         />
+
         <Route
           path="jobs"
           element={
@@ -40,6 +43,7 @@ const AdminRoutes = () => {
             </Suspense>
           }
         />
+
         <Route
           path="users"
           element={
@@ -48,6 +52,16 @@ const AdminRoutes = () => {
             </Suspense>
           }
         />
+
+        <Route
+          path="users/details/:id"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <UserDetails />
+            </Suspense>
+          }
+        />
+
         <Route
           path="audit-logs"
           element={
@@ -56,6 +70,7 @@ const AdminRoutes = () => {
             </Suspense>
           }
         />
+
         <Route
           path="config"
           element={
@@ -64,6 +79,7 @@ const AdminRoutes = () => {
             </Suspense>
           }
         />
+
         <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Route>
     </Routes>

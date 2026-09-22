@@ -474,3 +474,45 @@ export const verifyChain = async (req, res) => {
         res.status(500).json({ message: 'Error verifying chain.' });
     }
 };
+
+// --- GET USER DETAILS + METADATA ---
+export const getUserDetails = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Validate MongoDB ObjectId
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                message: 'Invalid user ID format.'
+            });
+        }
+
+        // Fetch user without sensitive fields
+        const user = await User.findById(id)
+            .select('-password -refreshToken -passwordChangedAt -profilePicturePublicId -__v')
+            .lean();
+
+        if (!user) {
+            return res.status(404).json({
+                message: 'User not found.'
+            });
+        }
+
+        // Fetch the user's metadata
+        const metadata = await UserMetadata.findOne({ user: id })
+            .sort({ createdAt: -1 })
+            .select('-__v')
+            .lean();
+
+        res.json({
+            user,
+            metadata
+        });
+
+    } catch (error) {
+        console.error('User details fetch error:', error);
+        res.status(500).json({
+            message: 'Error fetching user details.'
+        });
+    }
+};
