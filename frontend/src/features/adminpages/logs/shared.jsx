@@ -1,3 +1,4 @@
+// frontend/src/features/adminpages/logs/shared.jsx
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export const AUDIT_ACTIONS = [

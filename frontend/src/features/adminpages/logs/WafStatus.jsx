@@ -1,3 +1,4 @@
+// frontend/src/features/adminpages/logs/WafStatus.jsx
 import { useState } from 'react';
 import { Shield, AlertTriangle, Clock, Search, RefreshCw } from 'lucide-react';
 import apiClient from '@/lib/api';

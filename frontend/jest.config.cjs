@@ -8,12 +8,18 @@ module.exports = {
   },
 
   moduleNameMapper: {
+    // Allows @/ imports to resolve to the src directory.
     '^@/(.*)$': '<rootDir>/src/$1',
 
+    // Use the controlled Axios mock during Jest tests.
+    '^axios$': '<rootDir>/tests/__mocks__/axios.js',
+
+    // Mock CSS imports so Jest does not try to process stylesheets.
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
 
+    // The project keeps test mocks inside tests/__mocks__.
     '\\.(gif|ttf|eot|svg|png)$':
-      '<rootDir>/__mocks__/fileMock.js',
+      '<rootDir>/tests/__mocks__/fileMock.js',
   },
 
   transformIgnorePatterns: [

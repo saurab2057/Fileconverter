@@ -58,7 +58,7 @@ const UserManagement = () => {
     userTypeFilter === 'all' ? true : user.role === userTypeFilter
   );
 
-  const { mutate: mutateUser, isLoading: isUpdating } = useMutation({
+  const { mutate: mutateUser, isPending: isUpdating } = useMutation({
     mutationFn: updateUserApi,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -69,7 +69,7 @@ const UserManagement = () => {
     },
   });
 
-  const { mutate: deleteUser, isLoading: isDeleting } = useMutation({
+  const { mutate: deleteUser, isPending: isDeleting } = useMutation({
     mutationFn: deleteUserApi,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });

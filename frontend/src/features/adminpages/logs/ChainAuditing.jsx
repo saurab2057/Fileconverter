@@ -1,3 +1,4 @@
+// frontend/src/features/adminpages/logs/ChainAuditing.jsx
 import { useState } from 'react';
 import { RefreshCw, Shield, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import apiClient from '@/lib/api';
@@ -58,22 +59,46 @@ export default function ChainAuditingView() {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-      <button
-        onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm"
-      >
-        <div className="flex items-center gap-2">
+      <div className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm">
+        <button
+          type="button"
+          onClick={() => setExpanded(v => !v)}
+          className="flex items-center gap-2 flex-1 text-left"
+        >
           {statusIcon()}
-          <span>Hash-chain integrity: <span className={`font-semibold ${statusColour()}`}>{statusLabel()}</span></span>
-          {chainStatus?.checkedAt && <span className="text-gray-400 text-xs">(checked {new Date(chainStatus.checkedAt).toLocaleTimeString()})</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={(e) => { e.stopPropagation(); refetch(); }} className="p-1 rounded hover:bg-gray-200 transition-colors" title="Refresh status">
-            <RefreshCw className={`w-3.5 h-3.5 text-gray-500 ${isFetching ? 'animate-spin' : ''}`} />
-          </button>
-          {expanded ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
-        </div>
-      </button>
+
+          <span>
+            Hash-chain integrity:{' '}
+            <span className={`font-semibold ${statusColour()}`}>
+              {statusLabel()}
+            </span>
+          </span>
+
+          {chainStatus?.checkedAt && (
+            <span className="text-gray-400 text-xs">
+              (checked {new Date(chainStatus.checkedAt).toLocaleTimeString()})
+            </span>
+          )}
+
+          {expanded ? (
+            <ChevronUp className="w-4 h-4 text-gray-500 ml-auto" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-gray-500 ml-auto" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="p-1 rounded hover:bg-gray-200 transition-colors ml-2"
+          title="Refresh status"
+        >
+          <RefreshCw
+            className={`w-3.5 h-3.5 text-gray-500 ${isFetching ? 'animate-spin' : ''
+              }`}
+          />
+        </button>
+      </div>
 
       {expanded && (
         <div className="px-4 py-4 space-y-4 bg-white text-sm">

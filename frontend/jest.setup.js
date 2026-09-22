@@ -131,12 +131,17 @@ global.URL.revokeObjectURL = jest.fn();
 
 // ─────────────────────────────────────────────────────────────
 // Mock crypto.randomUUID
-// Provides a deterministic UUID during tests instead of relying
-// on the runtime's crypto implementation.
+// Each call returns a unique deterministic UUID so tests involving
+// multiple files can correctly identify individual files.
 // ─────────────────────────────────────────────────────────────
+let uuidCounter = 0;
+
 Object.defineProperty(global, 'crypto', {
   value: {
-    randomUUID: () => 'mock-uuid-1234',
+    randomUUID: jest.fn(() => {
+      uuidCounter += 1;
+      return `mock-uuid-${uuidCounter}`;
+    }),
   },
   writable: true,
 });

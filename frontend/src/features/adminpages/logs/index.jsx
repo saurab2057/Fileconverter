@@ -1,3 +1,4 @@
+// frontend/src/features/adminpages/logs/index.jsx
 import { useState } from 'react';
 import { Shield, Activity, Link, AlertTriangle } from 'lucide-react';
 import AuditLogsView from './AuditLogs';

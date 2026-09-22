@@ -1,3 +1,4 @@
+// frontend/src/features/adminpages/logs/ActivityLogs.jsx
 import { useState } from 'react';
 import { Search, Filter, Clock, User, RefreshCw, Activity } from 'lucide-react';
 import apiClient from '@/lib/api';

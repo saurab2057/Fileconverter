@@ -1,3 +1,20 @@
+// frontend/tests/authFlow.integration.test.jsx
+// ─────────────────────────────────────────────────────────────
+// Integration Test Purpose
+// ─────────────────────────────────────────────────────────────
+// This test verifies that the authentication components work together
+// correctly rather than testing each component in isolation.
+//
+// Main flow covered:
+// LoginForm → authService → AuthContext → Router
+//
+// It also verifies that ProtectedRoute prevents unauthenticated users
+// from accessing protected pages and redirects them to the home page.
+// ─────────────────────────────────────────────────────────────
+
+
+// Mock the authentication service so no real backend/API request is made.
+// The test controls successful and failed login responses.
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -16,10 +33,47 @@ import { authService } from '@/services/authService';
 jest.mock('@/services/authService', () => ({
   authService: {
     login: jest.fn(),
-    refreshToken: jest.fn().mockRejectedValue({
-      response: { status: 401 },
+  },
+}));
+
+jest.mock('@/lib/api', () => ({
+  ...jest.requireActual('@/lib/api'),
+
+  // AuthProvider initializes by calling refreshWithLock().
+  // Rejecting with 401 represents a normal unauthenticated session.
+  refreshWithLock: jest.fn().mockRejectedValue({
+    response: { status: 401 },
+  }),
+
+  session: {
+    accessToken: null,
+
+    setToken: jest.fn(function (token) {
+      this.accessToken = token;
+    }),
+
+    clearToken: jest.fn(function () {
+      this.accessToken = null;
+    }),
+
+    getToken: jest.fn(function () {
+      return this.accessToken;
     }),
   },
+}));
+
+jest.mock('@/hooks/useGoogleAuth', () => ({
+  useGoogleAuth: () => ({
+    handleGoogleClick: jest.fn(),
+    isLoading: false,
+  }),
+}));
+
+jest.mock('@/components/ui/LoadingAnimation', () => ({
+  __esModule: true,
+  default: ({ text }) => (
+    <div>{text || 'Loading'}</div>
+  ),
 }));
 
 const ProtectedComponent = () => (
@@ -33,27 +87,6 @@ const HomeComponent = () => (
 describe('Authentication Flow (Integration)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-
-    authService.refreshToken.mockRejectedValue({
-      response: { status: 401 },
-    });
-
-    // ToastProvider uses crypto.randomUUID().
-    if (!globalThis.crypto) {
-      Object.defineProperty(globalThis, 'crypto', {
-        value: {},
-        configurable: true,
-      });
-    }
-
-    if (!globalThis.crypto.randomUUID) {
-      globalThis.crypto.randomUUID = jest.fn(
-        () =>
-          `test-toast-${Math.random()
-            .toString(36)
-            .substring(2)}`
-      );
-    }
   });
 
   const renderWithProviders = (ui, initialEntries) => {
@@ -101,7 +134,7 @@ describe('Authentication Flow (Integration)', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('should login user successfully', async () => {
+  it('should login user successfully and navigate to home', async () => {
     const user = userEvent.setup();
 
     authService.login.mockResolvedValueOnce({
@@ -123,15 +156,6 @@ describe('Authentication Flow (Integration)', () => {
         <Route
           path="/login"
           element={<LoginForm />}
-        />
-
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <ProtectedComponent />
-            </ProtectedRoute>
-          }
         />
       </Routes>,
       ['/login']
@@ -167,9 +191,17 @@ describe('Authentication Flow (Integration)', () => {
       })
     );
 
+    expect(authService.login).toHaveBeenCalledTimes(1);
+
+    expect(authService.login).toHaveBeenCalledWith({
+      email: 'test@test.com',
+      password: 'Password123!',
+      recaptchaToken: 'mock-recaptcha-token',
+    });
+
     /*
-     * Login.jsx navigates to "/" after a successful
-     * normal-user login.
+     * Login.jsx intentionally waits 2 seconds before navigating
+     * so the "Hang Tight" loading state can be displayed.
      */
     await waitFor(
       () => {
@@ -181,17 +213,9 @@ describe('Authentication Flow (Integration)', () => {
         timeout: 4000,
       }
     );
-
-    expect(authService.login).toHaveBeenCalledTimes(1);
-
-    expect(authService.login).toHaveBeenCalledWith({
-      email: 'test@test.com',
-      password: 'Password123!',
-      recaptchaToken: 'mock-recaptcha-token',
-    });
   });
 
-  it('should show error message on login failure', async () => {
+  it('should show error message when login fails', async () => {
     const user = userEvent.setup();
 
     authService.login.mockRejectedValueOnce({
@@ -247,5 +271,66 @@ describe('Authentication Flow (Integration)', () => {
       password: 'WrongPassword',
       recaptchaToken: 'mock-recaptcha-token',
     });
+  });
+
+  it('should show loading state while redirecting after successful login', async () => {
+    const user = userEvent.setup();
+
+    authService.login.mockResolvedValueOnce({
+      accessToken: 'fake-token',
+      user: {
+        email: 'test@test.com',
+        name: 'Test User',
+        role: 'user',
+      },
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route
+          path="/login"
+          element={<LoginForm />}
+        />
+        <Route
+          path="/"
+          element={<HomeComponent />}
+        />
+      </Routes>,
+      ['/login']
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Login to Your Account')
+      ).toBeInTheDocument();
+    });
+
+    await user.type(
+      screen.getByPlaceholderText(/enter your email/i),
+      'test@test.com'
+    );
+
+    await user.type(
+      screen.getByPlaceholderText(/enter your password/i),
+      'Password123!'
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: /^login$/i,
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Hang Tight')
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole('button', {
+      name: /^login$/i,
+      })
+    ).toBeDisabled();
   });
 });

@@ -1,3 +1,4 @@
+// backend/middleware/fileUpload.js
 import multer from 'multer';
 import { MAX_SUMMARIZER_FILE_SIZE } from '../utils/aiSecurity.js';
 
