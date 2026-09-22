@@ -3,6 +3,7 @@ import express from 'express';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import axios from 'axios';
 
 // 🔒 SECURITY IMPORTS
 import {
@@ -16,6 +17,9 @@ import cors from 'cors';
 
 // 🔒 WAF IMPORT
 import { waf } from './middleware/waf.js';
+
+// 🔒 CLIENT IP
+import { getClientIp } from './utils/clientIp.js';
 
 // 🔒 ROUTE IMPORTS
 import authRoutes        from './routes/authRoute.js';
@@ -38,111 +42,92 @@ const __dirname  = path.dirname(__filename);
 
 const app = express();
 
+
 // ─────────────────────────────────────────────────────────────
 // PROXY TRUST
 // ─────────────────────────────────────────────────────────────
 // Render sits behind one trusted proxy layer for Express.
 //
-// IMPORTANT:
-// This does NOT mean we have determined that req.ip is the real
-// end-user IP. The temporary diagnostic endpoint below is being
-// used to inspect the complete proxy/header chain first.
-//
-// We will decide the correct client-IP extraction strategy AFTER
-// testing the actual Vercel → Cloudflare → Render request flow.
+// NOTE:
+// req.ip is not being used by our security/IP metadata logic.
+// Client IP extraction is centralized in getClientIp().
+// ─────────────────────────────────────────────────────────────
 app.set('trust proxy', 1);
 
 
 // ─────────────────────────────────────────────────────────────
-// 🔬 TEMPORARY CLIENT-IP DIAGNOSTICS
-// ─────────────────────────────────────────────────────────────
+// 🔬 TEMPORARY IPWHOIS DEBUG
 //
 // PURPOSE:
-// This block is ONLY for investigating how the real client IP
-// travels through:
+// Inspect the exact IPWhois response for the current client IP.
 //
-//     Browser → Vercel → Cloudflare → Render → Express
-//
-// We are intentionally logging multiple possible IP sources:
-//     - Express req.ip
-//     - Express req.ips
-//     - socket.remoteAddress
-//     - X-Forwarded-For
-//     - X-Real-IP
-//     - CF-Connecting-IP
-//     - CF-Ray
-//
-// DO NOT use any of these values for security decisions yet.
-//
-// After we determine which header/value represents the actual
-// client IP in the deployed architecture, this temporary block
-// can be completely REMOVED.
-//
-// ⚠️ LATER: REMOVE THIS ENTIRE SECTION after IP investigation.
+// This is temporary debugging only.
+// REMOVE THIS ENTIRE SECTION after confirming the response.
 // ─────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
-    app.use((req, res, next) => {
-        console.log('🔍 [TEMP IP DEBUG]', {
-            express: {
-                ip: req.ip,
-                ips: req.ips,
-            },
+    app.get('/api/debug/ipwhois', async (req, res) => {
+        try {
+            const clientIp = getClientIp(req);
 
-            socket: {
-                remoteAddress: req.socket.remoteAddress,
-            },
+            console.log(
+                '🔍 [IPWHOIS DEBUG] Client IP:',
+                clientIp
+            );
 
-            headers: {
-                xForwardedFor: req.headers['x-forwarded-for'],
-                xRealIp: req.headers['x-real-ip'],
-                cfConnectingIp: req.headers['cf-connecting-ip'],
-                cfRay: req.headers['cf-ray'],
-                forwarded: req.headers['forwarded'],
-            },
-        });
+            if (!clientIp || clientIp === 'unknown') {
+                return res.status(400).json({
+                    message: 'Client IP could not be determined.',
+                    clientIp,
+                });
+            }
 
-        next();
-    });
+            const response = await axios.get(
+                `https://ipwho.is/${clientIp}`,
+                {
+                    timeout: 4000,
+                    maxRedirects: 2,
+                }
+            );
 
-    // ─────────────────────────────────────────────────────────
-    // 🔬 TEMPORARY CLIENT-IP DEBUG ENDPOINT
-    //
-    // Open this through the deployed Vercel frontend:
-    //
-    // https://fileconverter-mu.vercel.app/api/debug/client-ip
-    //
-    // Test it from:
-    //   1. Phone using mobile data
-    //   2. Desktop using Wi-Fi
-    //
-    // Compare the returned headers to determine which value
-    // represents the actual originating client.
-    //
-    // ⚠️ LATER: REMOVE THIS ENTIRE ENDPOINT after testing.
-    // ─────────────────────────────────────────────────────────
-    app.get('/api/debug/client-ip', (req, res) => {
-        const debugInfo = {
-            express: {
-                ip: req.ip,
-                ips: req.ips,
-            },
+            console.log(
+                '🔍 [IPWHOIS DEBUG] Full response:',
+                JSON.stringify(response.data, null, 2)
+            );
 
-            socket: {
-                remoteAddress: req.socket.remoteAddress,
-            },
+            console.log(
+                '🔍 [IPWHOIS DEBUG] Connection:',
+                JSON.stringify(
+                    response.data?.connection,
+                    null,
+                    2
+                )
+            );
 
-            headers: {
-                xForwardedFor: req.headers['x-forwarded-for'],
-                xRealIp: req.headers['x-real-ip'],
-                cfConnectingIp: req.headers['cf-connecting-ip'],
-                cfRay: req.headers['cf-ray'],
-                forwarded: req.headers['forwarded'],
-            },
-        };
+            console.log(
+                '🔍 [IPWHOIS DEBUG] Security:',
+                JSON.stringify(
+                    response.data?.security,
+                    null,
+                    2
+                )
+            );
 
-        console.log('🔬 [TEMP CLIENT-IP DEBUG ENDPOINT]', debugInfo);
+            return res.json({
+                clientIp,
+                ipwhois: response.data,
+            });
 
-        return res.json(debugInfo);
+        } catch (error) {
+            console.error(
+                '❌ [IPWHOIS DEBUG] Failed:',
+                error.message
+            );
+
+            return res.status(500).json({
+                message: 'IPWhois debug request failed.',
+                error: error.message,
+            });
+        }
     });
 }
 
