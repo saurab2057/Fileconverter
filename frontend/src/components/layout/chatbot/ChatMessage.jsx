@@ -17,8 +17,8 @@ const markdownComponents = {
 const ChatMessage = ({ message, onSuggestionClick }) => {
   return (
     <div className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-      <div className="max-w-[80%]">
-        <div className={`p-3 rounded-2xl text-sm leading-relaxed ${
+      <div className="max-w-[80%] min-w-0">  {/* ← add min-w-0 so the flex item can actually shrink */}
+        <div className={`p-3 rounded-2xl text-sm leading-relaxed break-words ${  /* ← add break-words */
           message.type === 'user'
             ? 'bg-blue-600 text-white rounded-br-md'
             : message.error
