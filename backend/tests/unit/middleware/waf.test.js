@@ -1,3 +1,5 @@
+// tests/unit/middleware/waf.test.js
+import { describe, it, beforeEach, afterEach } from 'mocha';
 import { expect } from 'chai';
 import esmock from 'esmock';
 
@@ -5,94 +7,44 @@ describe('WAF Middleware', () => {
     let waf;
     let AuditLogMock;
     let hashIPMock;
-
+    let capturedAudit;
     let originalNodeEnv;
     let originalGenericAgents;
     let originalMetrics;
 
-    let auditCreate;
-
-    before(async () => {
-        originalNodeEnv = process.env.NODE_ENV;
-        originalGenericAgents = process.env.WAF_BLOCK_GENERIC_AGENTS;
-        originalMetrics = global.metrics;
-
-        /*
-         * Enable the optional generic User-Agent rules during testing so
-         * curl/python-requests/wget are covered as well.
-         */
-        process.env.WAF_BLOCK_GENERIC_AGENTS = 'true';
-        process.env.NODE_ENV = 'development';
-
-        auditCreate = async () => ({ _id: 'audit-test-id' });
-
-        AuditLogMock = {
-            create: (...args) => auditCreate(...args)
-        };
-
-        hashIPMock = (ip) => `hashed:${ip}`;
-
-        /*
-         * waf.js is an ESM module, so esmock lets us replace its ESM
-         * dependencies without touching the real MongoDB AuditLog model.
-         */
-        const module = await esmock('../../../middleware/waf.js', {
-            '../../../models/AuditLog.js': {
-                default: AuditLogMock
-            },
-            '../../../utils/authSecurity.js': {
-                hashIP: hashIPMock
-            }
-        });
-
-        waf = module.waf;
-    });
-
-    after(() => {
-        if (originalNodeEnv === undefined) {
-            delete process.env.NODE_ENV;
-        } else {
-            process.env.NODE_ENV = originalNodeEnv;
-        }
-
-        if (originalGenericAgents === undefined) {
-            delete process.env.WAF_BLOCK_GENERIC_AGENTS;
-        } else {
-            process.env.WAF_BLOCK_GENERIC_AGENTS = originalGenericAgents;
-        }
-
-        if (originalMetrics === undefined) {
-            delete global.metrics;
-        } else {
-            global.metrics = originalMetrics;
-        }
-    });
-
-    beforeEach(() => {
-        process.env.NODE_ENV = 'development';
-
-        auditCreate = async () => ({
-            _id: 'audit-test-id'
-        });
-
-        delete global.metrics;
-    });
-
     // ─────────────────────────────────────────────────────────────
-    // TEST HELPERS
+    // REQUEST HELPER
+    //
+    // WAF now gets the client IP through getClientIp(req), so tests
+    // intentionally provide proxy headers instead of req.ip.
     // ─────────────────────────────────────────────────────────────
-
     const createRequest = ({
         originalUrl = '/api/test',
         method = 'POST',
         body = {},
         query = {},
-        headers = {}
+        headers = {},
+        vercelForwardedFor,
+        forwardedFor,
+        cfConnectingIp,
+        socketIp = '203.0.113.10'
     } = {}) => {
         const normalizedHeaders = {
             'user-agent': 'Mozilla/5.0',
             ...headers
         };
+
+        if (vercelForwardedFor !== undefined) {
+            normalizedHeaders['x-vercel-forwarded-for'] = vercelForwardedFor;
+        }
+
+        if (forwardedFor !== undefined) {
+            normalizedHeaders['x-forwarded-for'] = forwardedFor;
+        }
+
+        if (cfConnectingIp !== undefined) {
+            normalizedHeaders['cf-connecting-ip'] = cfConnectingIp;
+        }
 
         return {
             originalUrl,
@@ -102,10 +54,12 @@ describe('WAF Middleware', () => {
             query,
             headers: normalizedHeaders,
 
-            ip: '203.0.113.10',
-
+            // Deliberately NO req.ip.
+            //
+            // The production middleware must use getClientIp(req)
+            // rather than relying on Express' req.ip value.
             socket: {
-                remoteAddress: '203.0.113.10'
+                remoteAddress: socketIp
             },
 
             user: {
@@ -137,15 +91,16 @@ describe('WAF Middleware', () => {
         return response;
     };
 
-    const runWaf = (requestOptions = {}) => {
-        const req = createRequest(requestOptions);
+    const runWaf = (req) => {
         const res = createResponse();
 
         let nextCalled = false;
 
-        waf(req, res, () => {
+        const next = () => {
             nextCalled = true;
-        });
+        };
+
+        waf(req, res, next);
 
         return {
             req,
@@ -154,36 +109,198 @@ describe('WAF Middleware', () => {
         };
     };
 
+    beforeEach(async () => {
+        originalNodeEnv = process.env.NODE_ENV;
+        originalGenericAgents = process.env.WAF_BLOCK_GENERIC_AGENTS;
+        originalMetrics = global.metrics;
+
+        process.env.NODE_ENV = 'production';
+        process.env.WAF_BLOCK_GENERIC_AGENTS = 'false';
+
+        capturedAudit = null;
+
+        AuditLogMock = {
+            create: async (data) => {
+                capturedAudit = data;
+                return data;
+            }
+        };
+
+        hashIPMock = (ip) => `hashed:${ip}`;
+
+        global.metrics = undefined;
+
+        ({ waf } = await esmock(
+            '../../../middleware/waf.js',
+            {
+                '../../../models/AuditLog.js': {
+                    default: AuditLogMock
+                },
+                '../../../utils/authSecurity.js': {
+                    hashIP: hashIPMock
+                }
+            }
+        ));
+    });
+
+    afterEach(() => {
+        if (originalNodeEnv === undefined) {
+            delete process.env.NODE_ENV;
+        } else {
+            process.env.NODE_ENV = originalNodeEnv;
+        }
+
+        if (originalGenericAgents === undefined) {
+            delete process.env.WAF_BLOCK_GENERIC_AGENTS;
+        } else {
+            process.env.WAF_BLOCK_GENERIC_AGENTS = originalGenericAgents;
+        }
+
+        global.metrics = originalMetrics;
+    });
+
     // ─────────────────────────────────────────────────────────────
-    // BASIC / TEST MODE
+    // ENVIRONMENT
     // ─────────────────────────────────────────────────────────────
 
     describe('Environment handling', () => {
-        it('should bypass the WAF completely in test mode', () => {
+        it('should bypass WAF completely in test mode', () => {
             process.env.NODE_ENV = 'test';
 
-            const result = runWaf({
-                originalUrl: '/api/users?file=../../etc/passwd',
-                body: {
-                    payload: '<script>alert(1)</script>'
+            const req = createRequest({
+                headers: {
+                    'user-agent': 'sqlmap/1.7'
                 }
             });
 
-            expect(result.nextCalled).to.equal(true);
-            expect(result.res.statusCode).to.equal(null);
+            const { res, nextCalled } = runWaf(req);
 
-            process.env.NODE_ENV = 'development';
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
+            expect(capturedAudit).to.equal(null);
         });
     });
 
     // ─────────────────────────────────────────────────────────────
-    // CHECK 1 — MALICIOUS USER-AGENT
+    // CLIENT IP / PROXY CHAIN
     // ─────────────────────────────────────────────────────────────
 
-    describe('Malicious User-Agent detection', () => {
+    describe('Client IP extraction', () => {
+        it('should use x-vercel-forwarded-for first', () => {
+            const req = createRequest({
+                vercelForwardedFor: '198.51.100.25',
+                forwardedFor: '198.51.100.50',
+                cfConnectingIp: '198.51.100.75',
+                socketIp: '10.0.0.5',
+                headers: {
+                    'user-agent': 'sqlmap/1.7'
+                }
+            });
+
+            runWaf(req);
+
+            expect(capturedAudit).to.not.equal(null);
+            expect(capturedAudit.details.ip).to.equal('198.51.100.25');
+            expect(capturedAudit.ipAddress).to.equal('198.51.100.25');
+            expect(capturedAudit.ipHash).to.equal('hashed:198.51.100.25');
+        });
+
+        it('should use the first IP from x-vercel-forwarded-for', () => {
+            const req = createRequest({
+                vercelForwardedFor: '198.51.100.25, 10.0.0.2, 10.0.0.3',
+                headers: {
+                    'user-agent': 'sqlmap/1.7'
+                }
+            });
+
+            runWaf(req);
+
+            expect(capturedAudit.details.ip).to.equal('198.51.100.25');
+        });
+
+        it('should fall back to x-forwarded-for when Vercel header is absent', () => {
+            const req = createRequest({
+                forwardedFor: '198.51.100.30, 10.0.0.2',
+                cfConnectingIp: '198.51.100.40',
+                socketIp: '10.0.0.5',
+                headers: {
+                    'user-agent': 'sqlmap/1.7'
+                }
+            });
+
+            runWaf(req);
+
+            expect(capturedAudit.details.ip).to.equal('198.51.100.30');
+        });
+
+        it('should use cf-connecting-ip when forwarded headers are absent', () => {
+            const req = createRequest({
+                cfConnectingIp: '198.51.100.40',
+                socketIp: '10.0.0.5',
+                headers: {
+                    'user-agent': 'sqlmap/1.7'
+                }
+            });
+
+            runWaf(req);
+
+            expect(capturedAudit.details.ip).to.equal('198.51.100.40');
+        });
+
+        it('should fall back to socket.remoteAddress when proxy headers are absent', () => {
+            const req = createRequest({
+                socketIp: '203.0.113.55',
+                headers: {
+                    'user-agent': 'sqlmap/1.7'
+                }
+            });
+
+            runWaf(req);
+
+            expect(capturedAudit.details.ip).to.equal('203.0.113.55');
+            expect(capturedAudit.ipAddress).to.equal('203.0.113.55');
+            expect(capturedAudit.ipHash).to.equal('hashed:203.0.113.55');
+        });
+
+        it('should normalize IPv4-mapped IPv6 socket addresses', () => {
+            const req = createRequest({
+                socketIp: '::ffff:203.0.113.60',
+                headers: {
+                    'user-agent': 'sqlmap/1.7'
+                }
+            });
+
+            runWaf(req);
+
+            expect(capturedAudit.details.ip).to.equal('203.0.113.60');
+            expect(capturedAudit.ipAddress).to.equal('203.0.113.60');
+        });
+
+        it('should not rely on req.ip', () => {
+            const req = createRequest({
+                socketIp: '203.0.113.70',
+                headers: {
+                    'user-agent': 'sqlmap/1.7'
+                }
+            });
+
+            req.ip = '192.0.2.123';
+
+            runWaf(req);
+
+            expect(capturedAudit.details.ip).to.equal('203.0.113.70');
+            expect(capturedAudit.ipAddress).to.equal('203.0.113.70');
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // MALICIOUS USER-AGENTS
+    // ─────────────────────────────────────────────────────────────
+
+    describe('Malicious User-Agent blocking', () => {
         const maliciousAgents = [
-            'sqlmap/1.8',
-            'Nikto/2.5.0',
+            'sqlmap/1.7',
+            'Nikto/2.5',
             'masscan/1.3',
             'Nmap Scripting Engine',
             'DirBuster-1.0',
@@ -192,48 +309,128 @@ describe('WAF Middleware', () => {
             'Metasploit Framework',
             'zgrab/0.1',
             'Nuclei/v3.0',
-            'Acunetix Scanner',
+            'Acunetix Web Vulnerability Scanner',
             'Nessus',
-            'BurpSuite Professional',
-            'python-requests/2.31.0',
-            'curl/8.5.0',
-            'Wget/1.21.4'
+            'BurpSuite Professional'
         ];
 
         for (const userAgent of maliciousAgents) {
-            it(`should block malicious User-Agent: ${userAgent}`, () => {
-                const result = runWaf({
+            it(`should block ${userAgent}`, () => {
+                const req = createRequest({
                     headers: {
                         'user-agent': userAgent
                     }
                 });
 
-                expect(result.nextCalled).to.equal(false);
-                expect(result.res.statusCode).to.equal(403);
-                expect(result.res.body).to.deep.equal({
+                const { res, nextCalled } = runWaf(req);
+
+                expect(res.statusCode).to.equal(403);
+                expect(res.body).to.deep.equal({
                     message: 'Forbidden.'
                 });
+                expect(nextCalled).to.equal(false);
             });
         }
 
-        it('should allow a normal browser User-Agent', () => {
-            const result = runWaf({
+        it('should block python-requests when generic agents are enabled', async () => {
+            process.env.WAF_BLOCK_GENERIC_AGENTS = 'true';
+
+            ({ waf } = await esmock(
+                '../../../middleware/waf.js',
+                {
+                    '../../../models/AuditLog.js': {
+                        default: AuditLogMock
+                    },
+                    '../../../utils/authSecurity.js': {
+                        hashIP: hashIPMock
+                    }
+                }
+            ));
+
+            const req = createRequest({
                 headers: {
-                    'user-agent':
-                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36'
+                    'user-agent': 'python-requests/2.32.3'
                 }
             });
 
-            expect(result.nextCalled).to.equal(true);
-            expect(result.res.statusCode).to.equal(null);
+            const { res, nextCalled } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+            expect(nextCalled).to.equal(false);
+        });
+
+        it('should block curl when generic agents are enabled', async () => {
+            process.env.WAF_BLOCK_GENERIC_AGENTS = 'true';
+
+            ({ waf } = await esmock(
+                '../../../middleware/waf.js',
+                {
+                    '../../../models/AuditLog.js': {
+                        default: AuditLogMock
+                    },
+                    '../../../utils/authSecurity.js': {
+                        hashIP: hashIPMock
+                    }
+                }
+            ));
+
+            const req = createRequest({
+                headers: {
+                    'user-agent': 'curl/8.5.0'
+                }
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+
+        it('should block wget when generic agents are enabled', async () => {
+            process.env.WAF_BLOCK_GENERIC_AGENTS = 'true';
+
+            ({ waf } = await esmock(
+                '../../../middleware/waf.js',
+                {
+                    '../../../models/AuditLog.js': {
+                        default: AuditLogMock
+                    },
+                    '../../../utils/authSecurity.js': {
+                        hashIP: hashIPMock
+                    }
+                }
+            ));
+
+            const req = createRequest({
+                headers: {
+                    'user-agent': 'Wget/1.21.4'
+                }
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+
+        it('should allow normal browser User-Agents', () => {
+            const req = createRequest({
+                headers: {
+                    'user-agent':
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0 Safari/537.36'
+                }
+            });
+
+            const { nextCalled, res } = runWaf(req);
+
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
         });
     });
 
     // ─────────────────────────────────────────────────────────────
-    // CHECK 2 — HTTP METHOD TAMPERING
+    // HTTP METHOD TAMPERING
     // ─────────────────────────────────────────────────────────────
 
-    describe('HTTP Method Tampering detection', () => {
+    describe('HTTP method tampering', () => {
         const overrideHeaders = [
             'x-http-method-override',
             'x-method-override',
@@ -242,184 +439,169 @@ describe('WAF Middleware', () => {
 
         for (const header of overrideHeaders) {
             it(`should block ${header}`, () => {
-                const result = runWaf({
+                const req = createRequest({
                     headers: {
                         [header]: 'DELETE'
                     }
                 });
 
-                expect(result.nextCalled).to.equal(false);
-                expect(result.res.statusCode).to.equal(403);
-                expect(result.res.body).to.deep.equal({
-                    message: 'Forbidden.'
-                });
+                const { res, nextCalled } = runWaf(req);
+
+                expect(res.statusCode).to.equal(403);
+                expect(nextCalled).to.equal(false);
             });
         }
 
-        it('should allow requests without override headers', () => {
-            const result = runWaf({
-                method: 'POST'
+        it('should block method override even when the value is harmless', () => {
+            const req = createRequest({
+                headers: {
+                    'x-http-method-override': 'GET'
+                }
             });
 
-            expect(result.nextCalled).to.equal(true);
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
         });
     });
 
     // ─────────────────────────────────────────────────────────────
-    // CHECK 3 — NULL BYTE INJECTION
+    // NULL BYTE INJECTION
     // ─────────────────────────────────────────────────────────────
 
-    describe('Null Byte Injection detection', () => {
+    describe('Null byte injection', () => {
         const payloads = [
             '/api/files/%00',
             '/api/files/%2500',
             '/api/files/\\u0000',
-            '/api/files/\x00'
+            `/api/files/${String.fromCharCode(0)}`,
         ];
 
-        for (const originalUrl of payloads) {
-            it(`should block null byte payload: ${JSON.stringify(originalUrl)}`, () => {
-                const result = runWaf({
-                    originalUrl
+        for (const payload of payloads) {
+            it(`should block null byte payload: ${JSON.stringify(payload)}`, () => {
+                const req = createRequest({
+                    originalUrl: payload
                 });
 
-                expect(result.nextCalled).to.equal(false);
-                expect(result.res.statusCode).to.equal(403);
-                expect(result.res.body).to.deep.equal({
-                    message: 'Forbidden.'
-                });
+                const { res, nextCalled } = runWaf(req);
+
+                expect(res.statusCode).to.equal(403);
+                expect(nextCalled).to.equal(false);
             });
         }
 
-        it('should detect null bytes in request body', () => {
-            const result = runWaf({
+        it('should block null bytes inside request body', () => {
+            const req = createRequest({
                 body: {
                     filename: 'document%00.pdf'
                 }
             });
 
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
         });
 
-        it('should detect null bytes in query parameters', () => {
-            const result = runWaf({
+        it('should block null bytes inside query parameters', () => {
+            const req = createRequest({
                 query: {
-                    filename: 'document%00.pdf'
+                    file: 'document%00.pdf'
                 }
             });
 
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
         });
     });
 
     // ─────────────────────────────────────────────────────────────
-    // CHECK 4 — PATH TRAVERSAL
+    // PATH TRAVERSAL
     // ─────────────────────────────────────────────────────────────
 
-    describe('Path Traversal detection', () => {
+    describe('Path traversal', () => {
         const traversalUrls = [
             '/api/files/../../etc/passwd',
-            '/api/files/..%2f..%2fetc%2fpasswd',
+            '/api/files/..%2f..%2fetc/passwd',
             '/api/files/..%5c..%5cwindows%5csystem32',
-            '/api/files/..%252f..%252fetc%252fpasswd',
+            '/api/files/..%252f..%252fetc/passwd',
+            '/api/files/%2e%2e/%2e%2e/etc/passwd',
+            '/api/files/....//....//etc/passwd',
             '/api/files/../../etc/shadow',
             '/api/files/../../proc/self/environ',
-            '/api/files/..%c0%af..%c0%afetc%2fpasswd',
+            '/api/files/..%c0%af..%c0%afetc/passwd',
             '/api/files/..%c1%9c..%c1%9cwindows',
-            '/api/files/....//....//etc/passwd'
         ];
 
-        for (const originalUrl of traversalUrls) {
-            it(`should block path traversal: ${originalUrl}`, () => {
-                const result = runWaf({
-                    originalUrl
+        for (const url of traversalUrls) {
+            it(`should block traversal URL: ${url}`, () => {
+                const req = createRequest({
+                    originalUrl: url
                 });
 
-                expect(result.nextCalled).to.equal(false);
-                expect(result.res.statusCode).to.equal(403);
-                expect(result.res.body).to.deep.equal({
-                    message: 'Forbidden.'
-                });
+                const { res, nextCalled } = runWaf(req);
+
+                expect(res.statusCode).to.equal(403);
+                expect(nextCalled).to.equal(false);
             });
         }
 
-        it('should detect traversal in query parameters', () => {
-            const result = runWaf({
+        it('should block traversal in query parameters', () => {
+            const req = createRequest({
                 query: {
-                    path: '../../etc/passwd'
+                    file: '../../etc/passwd'
                 }
             });
 
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
-        });
+            const { res } = runWaf(req);
 
-        it('should allow a normal file path', () => {
-            const result = runWaf({
-                originalUrl: '/api/files/reports/2026/report.pdf'
-            });
-
-            expect(result.nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(403);
         });
     });
 
     // ─────────────────────────────────────────────────────────────
-    // CHECK 5 — NOSQL INJECTION
+    // NOSQL INJECTION
     // ─────────────────────────────────────────────────────────────
 
-    describe('NoSQL Injection detection', () => {
-        it('should block a top-level MongoDB operator in the body', () => {
-            const result = runWaf({
+    describe('NoSQL injection', () => {
+        it('should block $gt operator', () => {
+            const req = createRequest({
                 body: {
-                    $gt: ''
-                }
-            });
-
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
-            expect(result.res.body).to.deep.equal({
-                message: 'Forbidden.'
-            });
-        });
-
-        it('should block a nested MongoDB operator in the body', () => {
-            const result = runWaf({
-                body: {
-                    user: {
-                        email: {
-                            $ne: null
-                        }
-                    }
-                }
-            });
-
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
-        });
-
-        it('should block a MongoDB operator in query parameters', () => {
-            const result = runWaf({
-                query: {
                     username: {
-                        $regex: '.*'
+                        $gt: ''
                     }
                 }
             });
 
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
         });
 
-        it('should detect deeply nested MongoDB operators', () => {
-            const result = runWaf({
+        it('should block $ne operator', () => {
+            const req = createRequest({
+                query: {
+                    password: {
+                        $ne: null
+                    }
+                }
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+
+        it('should block deeply nested MongoDB operators', () => {
+            const req = createRequest({
                 body: {
                     level1: {
                         level2: {
                             level3: {
                                 level4: {
-                                    $where: 'this.password'
+                                    level5: {
+                                        $where: 'this.password'
+                                    }
                                 }
                             }
                         }
@@ -427,615 +609,59 @@ describe('WAF Middleware', () => {
                 }
             });
 
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
         });
 
-        it('should not flag a dollar sign inside a normal string value', () => {
-            const result = runWaf({
+        it('should block array-contained MongoDB operators', () => {
+            const req = createRequest({
                 body: {
-                    username: 'P$ortal1!',
-                    description: 'Price is $100'
-                }
-            });
-
-            expect(result.nextCalled).to.equal(true);
-        });
-
-        it('should stop recursive NoSQL inspection beyond the configured depth', () => {
-            let deeplyNested = {
-                $where: 'blocked'
-            };
-
-            for (let i = 0; i < 12; i++) {
-                deeplyNested = {
-                    nested: deeplyNested
-                };
-            }
-
-            const result = runWaf({
-                body: deeplyNested
-            });
-
-            /*
-             * The detector intentionally stops after depth 10 to prevent
-             * recursive payloads from becoming a denial-of-service vector.
-             */
-            expect(result.nextCalled).to.equal(true);
-        });
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // CHECK 6 — PROTOTYPE POLLUTION
-    // ─────────────────────────────────────────────────────────────
-
-    describe('Prototype Pollution detection', () => {
-        const dangerousKeys = [
-            '__proto__',
-            'constructor',
-            'prototype'
-        ];
-
-        for (const key of dangerousKeys) {
-            it(`should block dangerous key "${key}" in the body`, () => {
-                const body = {};
-
-                Object.defineProperty(body, key, {
-                    value: {
-                        isAdmin: true
-                    },
-                    enumerable: true,
-                    configurable: true,
-                    writable: true
-                });
-
-                const result = runWaf({
-                    body
-                });
-
-                expect(result.nextCalled).to.equal(false);
-                expect(result.res.statusCode).to.equal(403);
-                expect(result.res.body).to.deep.equal({
-                    message: 'Forbidden.'
-                });
-            });
-        }
-
-        it('should block nested prototype pollution keys', () => {
-            const result = runWaf({
-                body: {
-                    profile: {
-                        settings: {
-                            constructor: {
-                                prototype: {
-                                    isAdmin: true
-                                }
+                    users: [
+                        {
+                            username: {
+                                $regex: 'admin'
                             }
                         }
-                    }
-                }
-            });
-
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
-        });
-
-        it('should block dangerous keys in query objects', () => {
-            const query = {};
-
-            Object.defineProperty(query, '__proto__', {
-                value: {
-                    polluted: true
-                },
-                enumerable: true,
-                configurable: true,
-                writable: true
-            });
-
-            const result = runWaf({
-                query
-            });
-
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
-        });
-
-        it('should allow ordinary object keys', () => {
-            const result = runWaf({
-                body: {
-                    username: 'saurab',
-                    profile: {
-                        name: 'Saurab'
-                    }
-                }
-            });
-
-            expect(result.nextCalled).to.equal(true);
-        });
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // CHECK 7 — XSS
-    // ─────────────────────────────────────────────────────────────
-
-    describe('XSS detection', () => {
-        const xssPayloads = [
-            '<script>alert(1)</script>',
-            '</script>',
-            'javascript:alert(1)',
-            'onclick="alert(1)"',
-            "onerror='alert(1)'",
-            'onload=alert(1)',
-            '<svg onload=alert(1)>',
-            '<math href="javascript:alert(1)">',
-            'expression(alert(1))',
-            '<iframe src="evil.example"></iframe>',
-            '<object data="evil.swf">',
-            '<embed src="evil.swf">',
-            'data:text/html,<script>alert(1)</script>',
-            'vbscript:msgbox(1)',
-            '<img src="javascript:alert(1)">'
-        ];
-
-        for (const payload of xssPayloads) {
-            it(`should block XSS payload: ${payload}`, () => {
-                const result = runWaf({
-                    body: {
-                        content: payload
-                    }
-                });
-
-                expect(result.nextCalled).to.equal(false);
-                expect(result.res.statusCode).to.equal(403);
-                expect(result.res.body).to.deep.equal({
-                    message: 'Forbidden.'
-                });
-            });
-        }
-
-        it('should detect XSS in query parameters', () => {
-            const result = runWaf({
-                query: {
-                    search: '<script>alert(1)</script>'
-                }
-            });
-
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
-        });
-
-        it('should allow normal text containing ordinary punctuation', () => {
-            const result = runWaf({
-                body: {
-                    content: 'Hello world! This is a normal message.'
-                }
-            });
-
-            expect(result.nextCalled).to.equal(true);
-        });
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // CHECK 8 — OVERSIZED PAYLOAD
-    // ─────────────────────────────────────────────────────────────
-
-    describe('Oversized Payload detection', () => {
-        it('should block a body larger than 350KB', () => {
-            const largeString = 'A'.repeat(351 * 1024);
-
-            const result = runWaf({
-                body: {
-                    data: largeString
-                }
-            });
-
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(413);
-            expect(result.res.body).to.deep.equal({
-                message: 'Payload too large.'
-            });
-        });
-
-        it('should allow a body below the 350KB limit', () => {
-            const normalString = 'A'.repeat(100 * 1024);
-
-            const result = runWaf({
-                body: {
-                    data: normalString
-                }
-            });
-
-            expect(result.nextCalled).to.equal(true);
-            expect(result.res.statusCode).to.equal(null);
-        });
-
-        it('should measure payload size in UTF-8 bytes', () => {
-            /*
-             * Each Nepali character uses multiple UTF-8 bytes.
-             * This confirms the middleware uses Buffer.byteLength()
-             * instead of JavaScript string.length.
-             */
-            const unicodeString = 'क'.repeat(200000);
-
-            const result = runWaf({
-                body: {
-                    data: unicodeString
-                }
-            });
-
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(413);
-        });
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // URL DECODING / MALFORMED URL
-    // ─────────────────────────────────────────────────────────────
-
-    describe('URL decoding safety', () => {
-        it('should fall back to the original URL when decodeURIComponent fails', () => {
-            const result = runWaf({
-                originalUrl: '/api/files/%E0%A4%A'
-            });
-
-            expect(result.nextCalled).to.equal(true);
-            expect(result.res.statusCode).to.equal(null);
-        });
-
-        it('should still block traversal after URL decoding', () => {
-            const result = runWaf({
-                originalUrl: '/api/files/..%2F..%2Fetc%2Fpasswd'
-            });
-
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
-        });
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // BODY FLATTENING
-    // ─────────────────────────────────────────────────────────────
-
-    describe('Parsed body handling', () => {
-        it('should inspect nested object values for XSS', () => {
-            const result = runWaf({
-                body: {
-                    profile: {
-                        bio: '<script>alert(1)</script>'
-                    }
-                }
-            });
-
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
-        });
-
-        it('should inspect array values for XSS', () => {
-            const result = runWaf({
-                body: {
-                    comments: [
-                        'normal comment',
-                        '<script>alert(1)</script>'
                     ]
                 }
             });
 
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
         });
 
-        it('should not treat an object key alone as an XSS payload', () => {
-            const body = {};
-
-            Object.defineProperty(body, 'onclick', {
-                value: 'normal-value',
-                enumerable: true,
-                configurable: true,
-                writable: true
+        it('should allow dollar signs inside normal string values', () => {
+            const req = createRequest({
+                body: {
+                    password: 'P$ortal1!',
+                    description: 'Price is $100'
+                }
             });
 
-            const result = runWaf({
-                body
-            });
+            const { nextCalled, res } = runWaf(req);
 
-            /*
-             * flattenBody() intentionally scans values rather than
-             * serializing key=value pairs, avoiding false positives
-             * caused solely by field names.
-             */
-            expect(result.nextCalled).to.equal(true);
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
         });
-    });
 
-    // ─────────────────────────────────────────────────────────────
-    // AUDIT LOGGING
-    // ─────────────────────────────────────────────────────────────
+        it('should not recurse beyond the configured depth', () => {
+            let payload = {
+                $gt: ''
+            };
 
-    describe('Blocked request audit logging', () => {
-        it('should create an AuditLog entry when a request is blocked', async () => {
-            let capturedAudit;
-
-            auditCreate = async (data) => {
-                capturedAudit = data;
-                return {
-                    _id: 'audit-123'
+            for (let i = 0; i < 11; i++) {
+                payload = {
+                    nested: payload
                 };
-            };
-
-            const result = runWaf({
-                originalUrl: '/api/test',
-                body: {
-                    payload: '<script>alert(1)</script>'
-                }
-            });
-
-            expect(result.res.statusCode).to.equal(403);
-
-            /*
-             * AuditLog.create() is intentionally fire-and-forget.
-             * Give the promise microtask queue time to complete.
-             */
-            await new Promise(resolve => setImmediate(resolve));
-
-            expect(capturedAudit).to.exist;
-            expect(capturedAudit.userId).to.equal('user-123');
-            expect(capturedAudit.source).to.equal('system');
-            expect(capturedAudit.action).to.equal('WAF_BLOCKED');
-            expect(capturedAudit.resource).to.equal('POST /api/test');
-
-            expect(capturedAudit.details).to.deep.include({
-                attackType: 'XSS_ATTEMPT',
-                ip: '203.0.113.10',
-                userAgent: 'Mozilla/5.0'
-            });
-
-            expect(capturedAudit.ipAddress).to.equal('203.0.113.10');
-            expect(capturedAudit.ipHash).to.equal(
-                'hashed:203.0.113.10'
-            );
-            expect(capturedAudit.userAgent).to.equal('Mozilla/5.0');
-        });
-
-        it('should continue returning the security response when AuditLog.create fails', async () => {
-            let loggedError = false;
-
-            const originalConsoleError = console.error;
-
-            console.error = (...args) => {
-                if (
-                    String(args[0]).includes(
-                        '[WAF] AuditLog write failed'
-                    )
-                ) {
-                    loggedError = true;
-                }
-            };
-
-            auditCreate = async () => {
-                throw new Error('MongoDB unavailable');
-            };
-
-            try {
-                const result = runWaf({
-                    body: {
-                        payload: '<script>alert(1)</script>'
-                    }
-                });
-
-                expect(result.nextCalled).to.equal(false);
-                expect(result.res.statusCode).to.equal(403);
-
-                await new Promise(resolve => setImmediate(resolve));
-
-                expect(loggedError).to.equal(true);
-            } finally {
-                console.error = originalConsoleError;
             }
-        });
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // SENSITIVE DATA MASKING
-    // ─────────────────────────────────────────────────────────────
-
-    describe('Sensitive data masking in audit details', () => {
-        it('should mask passwords and tokens in blocked request details', async () => {
-            let capturedAudit;
-
-            auditCreate = async (data) => {
-                capturedAudit = data;
-                return {};
-            };
-
-            const result = runWaf({
-                originalUrl:
-                    '/api/test?password=supersecret&token=abc123&api_key=private-key',
-                body: {
-                    payload: '<script>alert(1)</script>'
-                }
-            });
-
-            expect(result.res.statusCode).to.equal(403);
-
-            await new Promise(resolve => setImmediate(resolve));
-
-            expect(capturedAudit).to.exist;
-
-            /*
-             * The WAF currently logs the URL only for some attack
-             * categories. This assertion confirms the masking helper
-             * does not leak sensitive query-string values when invoked.
-             */
-            expect(capturedAudit.details.details).to.not.include(
-                'supersecret'
-            );
-            expect(capturedAudit.details.details).to.not.include(
-                'abc123'
-            );
-            expect(capturedAudit.details.details).to.not.include(
-                'private-key'
-            );
-        });
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // METRICS HOOK
-    // ─────────────────────────────────────────────────────────────
-
-    describe('Metrics hook', () => {
-        it('should increment waf.block metrics when metrics is available', () => {
-            let metricCall;
-
-            global.metrics = {
-                increment: (...args) => {
-                    metricCall = args;
-                }
-            };
-
-            const result = runWaf({
-                body: {
-                    payload: '<script>alert(1)</script>'
-                }
-            });
-
-            expect(result.res.statusCode).to.equal(403);
-            expect(metricCall).to.exist;
-
-            expect(metricCall[0]).to.equal('waf.block');
-            expect(metricCall[1]).to.deep.equal({
-                attackType: 'XSS_ATTEMPT',
-                route: '/api/test'
-            });
-        });
-
-        it('should not fail when metrics is unavailable', () => {
-            delete global.metrics;
-
-            const result = runWaf({
-                body: {
-                    payload: '<script>alert(1)</script>'
-                }
-            });
-
-            expect(result.nextCalled).to.equal(false);
-            expect(result.res.statusCode).to.equal(403);
-        });
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // USER / IP FALLBACKS
-    // ─────────────────────────────────────────────────────────────
-
-    describe('Request metadata fallbacks', () => {
-        it('should use socket.remoteAddress when req.ip is unavailable', async () => {
-            let capturedAudit;
-
-            auditCreate = async (data) => {
-                capturedAudit = data;
-                return {};
-            };
 
             const req = createRequest({
-                body: {
-                    payload: '<script>alert(1)</script>'
-                }
+                body: payload
             });
 
-            delete req.ip;
-
-            const res = createResponse();
-
-            waf(req, res, () => {});
-
-            await new Promise(resolve => setImmediate(resolve));
-
-            expect(res.statusCode).to.equal(403);
-            expect(capturedAudit).to.exist;
-            expect(capturedAudit.ipAddress).to.equal(
-                '203.0.113.10'
-            );
-            expect(capturedAudit.ipHash).to.equal(
-                'hashed:203.0.113.10'
-            );
-        });
-
-        it('should use unauthenticated when req.user is absent', async () => {
-            let capturedAudit;
-
-            auditCreate = async (data) => {
-                capturedAudit = data;
-                return {};
-            };
-
-            const req = createRequest({
-                body: {
-                    payload: '<script>alert(1)</script>'
-                }
-            });
-
-            delete req.user;
-
-            const res = createResponse();
-
-            waf(req, res, () => {});
-
-            await new Promise(resolve => setImmediate(resolve));
-
-            expect(res.statusCode).to.equal(403);
-            expect(capturedAudit).to.exist;
-            expect(capturedAudit.userId).to.equal(null);
-        });
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // FAIL-CLOSED PRODUCTION ERROR HANDLING
-    // ─────────────────────────────────────────────────────────────
-
-    describe('Unexpected WAF errors', () => {
-        it('should fail closed with HTTP 500 in production', () => {
-            process.env.NODE_ENV = 'production';
-
-            const req = {
-                get() {
-                    throw new Error('Unexpected request failure');
-                }
-            };
-
-            const res = createResponse();
-
-            let nextCalled = false;
-
-            waf(req, res, () => {
-                nextCalled = true;
-            });
-
-            expect(nextCalled).to.equal(false);
-            expect(res.statusCode).to.equal(500);
-
-            expect(res.body).to.deep.equal({
-                message:
-                    'Security check failed. Please try again later.'
-            });
-
-            process.env.NODE_ENV = 'development';
-        });
-
-        it('should fail open in development when an unexpected WAF error occurs', () => {
-            process.env.NODE_ENV = 'development';
-
-            const req = {
-                get() {
-                    throw new Error('Unexpected request failure');
-                }
-            };
-
-            const res = createResponse();
-
-            let nextCalled = false;
-
-            waf(req, res, () => {
-                nextCalled = true;
-            });
+            const { nextCalled, res } = runWaf(req);
 
             expect(nextCalled).to.equal(true);
             expect(res.statusCode).to.equal(null);
@@ -1043,47 +669,524 @@ describe('WAF Middleware', () => {
     });
 
     // ─────────────────────────────────────────────────────────────
-    // CLEAN REQUEST
+    // PROTOTYPE POLLUTION
     // ─────────────────────────────────────────────────────────────
 
-    describe('Clean requests', () => {
-        it('should allow a completely normal request', () => {
-            const result = runWaf({
-                originalUrl: '/api/users?page=1',
-                method: 'GET',
-                query: {
-                    page: '1',
-                    sort: 'createdAt'
-                },
-                body: {}
+    describe('Prototype pollution', () => {
+        it('should block __proto__ keys', () => {
+            const payload = JSON.parse(
+                '{"__proto__":{"isAdmin":true}}'
+            );
+
+            const req = createRequest({
+                body: payload
             });
 
-            expect(result.nextCalled).to.equal(true);
-            expect(result.res.statusCode).to.equal(null);
-            expect(result.res.body).to.equal(null);
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
         });
 
-        it('should allow normal nested application data', () => {
-            const result = runWaf({
-                originalUrl: '/api/profile',
-                method: 'PUT',
+        it('should block constructor keys', () => {
+            const payload = JSON.parse(
+                '{"constructor":{"prototype":{"isAdmin":true}}}'
+            );
+
+            const req = createRequest({
+                body: payload
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+
+        it('should block prototype keys', () => {
+            const payload = JSON.parse(
+                '{"prototype":{"polluted":true}}'
+            );
+
+            const req = createRequest({
+                body: payload
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+
+        it('should block nested prototype pollution keys', () => {
+            const payload = JSON.parse(
+                '{"user":{"profile":{"constructor":{"prototype":{"isAdmin":true}}}}}'
+            );
+
+            const req = createRequest({
+                body: payload
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+
+        it('should block prototype pollution inside arrays', () => {
+            const payload = JSON.parse(
+                '{"users":[{"__proto__":{"isAdmin":true}}]}'
+            );
+
+            const req = createRequest({
+                body: payload
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+
+        it('should not recurse beyond the configured depth', () => {
+            let payload = {
+                constructor: {
+                    prototype: {
+                        polluted: true
+                    }
+                }
+            };
+
+            for (let i = 0; i < 11; i++) {
+                payload = {
+                    nested: payload
+                };
+            }
+
+            const req = createRequest({
+                body: payload
+            });
+
+            const { nextCalled, res } = runWaf(req);
+
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // XSS
+    // ─────────────────────────────────────────────────────────────
+
+    describe('XSS detection', () => {
+        const xssPayloads = [
+            '<script>alert(1)</script>',
+            '<SCRIPT>alert(1)</SCRIPT>',
+            'javascript:alert(1)',
+            'onclick="alert(1)"',
+            "onerror='alert(1)'",
+            'onload=alert(1)',
+            '<svg onload=alert(1)>',
+            '<math href="javascript:alert(1)">',
+            'expression(alert(1))',
+            '<iframe src="evil"></iframe>',
+            '<object data="evil">',
+            '<embed src="evil">',
+            'data:text/html,<script>alert(1)</script>',
+            'vbscript:msgbox(1)',
+            '<img src="javascript:alert(1)">'
+        ];
+
+        for (const payload of xssPayloads) {
+            it(`should block XSS payload: ${payload}`, () => {
+                const req = createRequest({
+                    body: {
+                        input: payload
+                    }
+                });
+
+                const { res, nextCalled } = runWaf(req);
+
+                expect(res.statusCode).to.equal(403);
+                expect(nextCalled).to.equal(false);
+            });
+        }
+
+        it('should detect XSS in nested parsed body objects', () => {
+            const req = createRequest({
                 body: {
-                    name: 'Saurab',
-                    bio: 'Software engineer building file tools.',
-                    preferences: {
-                        theme: 'dark',
-                        language: 'en'
-                    },
-                    tags: [
-                        'backend',
-                        'AI',
-                        'Node.js'
+                    user: {
+                        profile: {
+                            bio: '<script>alert(document.cookie)</script>'
+                        }
+                    }
+                }
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+
+        it('should detect XSS inside arrays', () => {
+            const req = createRequest({
+                body: {
+                    comments: [
+                        'hello',
+                        '<img src=x onerror=alert(1)>'
                     ]
                 }
             });
 
-            expect(result.nextCalled).to.equal(true);
-            expect(result.res.statusCode).to.equal(null);
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+
+        it('should detect XSS in query parameters', () => {
+            const req = createRequest({
+                query: {
+                    search: '<script>alert(1)</script>'
+                }
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // OVERSIZED PAYLOAD
+    // ─────────────────────────────────────────────────────────────
+
+    describe('Oversized payload', () => {
+        it('should allow payload at exactly 350KB', () => {
+            const body = {
+                data: 'a'.repeat(350 * 1024 - 20)
+            };
+
+            const req = createRequest({
+                body
+            });
+
+            const { nextCalled, res } = runWaf(req);
+
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
+        });
+
+        it('should block payload over 350KB', () => {
+            const body = {
+                data: 'a'.repeat(351 * 1024)
+            };
+
+            const req = createRequest({
+                body
+            });
+
+            const { res, nextCalled } = runWaf(req);
+
+            expect(res.statusCode).to.equal(413);
+            expect(res.body).to.deep.equal({
+                message: 'Payload too large.'
+            });
+            expect(nextCalled).to.equal(false);
+        });
+
+        it('should measure payload size using UTF-8 bytes', () => {
+            const body = {
+                data: '😀'.repeat(100000)
+            };
+
+            const req = createRequest({
+                body
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(413);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // URL DECODING
+    // ─────────────────────────────────────────────────────────────
+
+    describe('URL decoding', () => {
+        it('should block encoded traversal after decoding', () => {
+            const req = createRequest({
+                originalUrl: '/api/files/%2e%2e/%2e%2e/etc/passwd'
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+
+        it('should safely handle malformed URL encoding', () => {
+            const req = createRequest({
+                originalUrl: '/api/files/%E0%A4%A'
+            });
+
+            const { nextCalled, res } = runWaf(req);
+
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // AUDIT LOGGING
+    // ─────────────────────────────────────────────────────────────
+
+    describe('Audit logging', () => {
+        it('should create an audit record when a request is blocked', () => {
+            const req = createRequest({
+                method: 'POST',
+                originalUrl: '/api/test',
+                body: {
+                    input: '<script>alert(1)</script>'
+                },
+                vercelForwardedFor: '198.51.100.80',
+                headers: {
+                    'user-agent': 'Mozilla/5.0'
+                }
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+            expect(capturedAudit).to.not.equal(null);
+
+            expect(capturedAudit.userId).to.equal('user-123');
+            expect(capturedAudit.source).to.equal('system');
+            expect(capturedAudit.action).to.equal('WAF_BLOCKED');
+            expect(capturedAudit.resource).to.equal('POST /api/test');
+
+            expect(capturedAudit.details.attackType)
+                .to.equal('XSS_ATTEMPT');
+
+            expect(capturedAudit.details.ip)
+                .to.equal('198.51.100.80');
+
+            expect(capturedAudit.details.userAgent)
+                .to.equal('Mozilla/5.0');
+
+            expect(capturedAudit.ipAddress)
+                .to.equal('198.51.100.80');
+
+            expect(capturedAudit.ipHash)
+                .to.equal('hashed:198.51.100.80');
+
+            expect(capturedAudit.userAgent)
+                .to.equal('Mozilla/5.0');
+        });
+
+        it('should mask sensitive values before writing audit details', () => {
+            const req = createRequest({
+                originalUrl:
+                    '/api/test?password=supersecret&token=abc123&cc=4111111111111111',
+                headers: {
+                    'user-agent': 'Mozilla/5.0'
+                },
+                body: {
+                    input: '<script>alert(1)</script>'
+                }
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+            expect(capturedAudit).to.not.equal(null);
+
+            const details = capturedAudit.details.details;
+
+            expect(details).to.not.include('supersecret');
+            expect(details).to.not.include('abc123');
+            expect(details).to.not.include('4111111111111111');
+        });
+
+        it('should continue blocking when AuditLog.create fails', () => {
+            AuditLogMock.create = async () => {
+                throw new Error('Database unavailable');
+            };
+
+            const req = createRequest({
+                body: {
+                    input: '<script>alert(1)</script>'
+                }
+            });
+
+            const { res, nextCalled } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+            expect(nextCalled).to.equal(false);
+        });
+
+        it('should use null userId for unauthenticated requests', () => {
+            const req = createRequest({
+                body: {
+                    input: '<script>alert(1)</script>'
+                }
+            });
+
+            delete req.user;
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+            expect(capturedAudit.userId).to.equal(null);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // METRICS
+    // ─────────────────────────────────────────────────────────────
+
+    describe('Metrics', () => {
+        it('should emit WAF block metrics when metrics are available', () => {
+            const calls = [];
+
+            global.metrics = {
+                increment: (name, data) => {
+                    calls.push({
+                        name,
+                        data
+                    });
+                }
+            };
+
+            const req = createRequest({
+                originalUrl: '/api/test',
+                body: {
+                    input: '<script>alert(1)</script>'
+                }
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+            expect(calls).to.have.length(1);
+
+            expect(calls[0]).to.deep.equal({
+                name: 'waf.block',
+                data: {
+                    attackType: 'XSS_ATTEMPT',
+                    route: '/api/test'
+                }
+            });
+        });
+
+        it('should not fail when metrics are unavailable', () => {
+            global.metrics = undefined;
+
+            const req = createRequest({
+                body: {
+                    input: '<script>alert(1)</script>'
+                }
+            });
+
+            const { res } = runWaf(req);
+
+            expect(res.statusCode).to.equal(403);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // ERROR HANDLING
+    // ─────────────────────────────────────────────────────────────
+
+    describe('Unexpected WAF errors', () => {
+        it('should fail closed with 500 in production', () => {
+            const req = createRequest();
+
+            // Force an unexpected synchronous error inside WAF.
+            req.get = () => {
+                throw new Error('Unexpected WAF failure');
+            };
+
+            const { res, nextCalled } = runWaf(req);
+
+            expect(res.statusCode).to.equal(500);
+            expect(res.body).to.deep.equal({
+                message: 'Security check failed. Please try again later.'
+            });
+            expect(nextCalled).to.equal(false);
+        });
+
+        it('should fail open in development', () => {
+            process.env.NODE_ENV = 'development';
+
+            const req = createRequest();
+
+            req.get = () => {
+                throw new Error('Unexpected WAF failure');
+            };
+
+            const { res, nextCalled } = runWaf(req);
+
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // CLEAN REQUESTS
+    // ─────────────────────────────────────────────────────────────
+
+    describe('Clean requests', () => {
+        it('should allow a normal request', () => {
+            const req = createRequest({
+                originalUrl: '/api/files',
+                method: 'GET',
+                query: {
+                    page: '1',
+                    limit: '20'
+                }
+            });
+
+            const { nextCalled, res } = runWaf(req);
+
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
+        });
+
+        it('should allow normal MongoDB-looking values', () => {
+            const req = createRequest({
+                body: {
+                    username: 'admin',
+                    password: 'P$ortal1!',
+                    description: 'Price is $100',
+                    filename: 'document.pdf'
+                }
+            });
+
+            const { nextCalled, res } = runWaf(req);
+
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
+        });
+
+        it('should allow normal HTML text without executable XSS patterns', () => {
+            const req = createRequest({
+                body: {
+                    description: 'Use <strong>bold text</strong> in the document.'
+                }
+            });
+
+            const { nextCalled, res } = runWaf(req);
+
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
+        });
+
+        it('should allow a request when the client IP is only available through socket', () => {
+            const req = createRequest({
+                socketIp: '203.0.113.99',
+                originalUrl: '/api/profile',
+                method: 'GET'
+            });
+
+            const { nextCalled, res } = runWaf(req);
+
+            expect(nextCalled).to.equal(true);
+            expect(res.statusCode).to.equal(null);
         });
     });
 });

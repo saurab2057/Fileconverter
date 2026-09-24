@@ -56,6 +56,16 @@ jest.mock('@/features/adminpages/UserManagement', () => ({
   ),
 }));
 
+// Mock UserDetails separately because it is a nested lazy-loaded route.
+jest.mock('@/features/adminpages/UserManagement/UserDetails', () => ({
+  __esModule: true,
+  default: () => (
+    <div data-testid="admin-user-details">
+      User Details
+    </div>
+  ),
+}));
+
 jest.mock('@/features/adminpages/logs', () => ({
   __esModule: true,
   default: () => (
@@ -77,9 +87,7 @@ jest.mock('@/features/adminpages/SystemConfig', () => ({
 // ─────────────────────────────────────────────────────────────
 // Render the route component.
 //
-// Only non-redirect routes are used here. This intentionally
-// avoids the Navigate elements while we verify the actual
-// admin route mappings.
+// Each test supplies the route directly through MemoryRouter.
 // ─────────────────────────────────────────────────────────────
 const renderAdminRoute = (path) => {
   return render(
@@ -115,6 +123,14 @@ describe('AdminRoutes', () => {
 
     expect(
       await screen.findByTestId('admin-users')
+    ).toBeInTheDocument();
+  });
+
+  test('renders UserDetails for /users/details/:id', async () => {
+    renderAdminRoute('/users/details/12345');
+
+    expect(
+      await screen.findByTestId('admin-user-details')
     ).toBeInTheDocument();
   });
 

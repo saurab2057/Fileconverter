@@ -1,3 +1,6 @@
+
+// tests/unit/utils/authSecurity.test.js
+
 import { expect } from 'chai';
 
 import {
@@ -8,6 +11,11 @@ import {
 } from '../../../utils/authSecurity.js';
 
 describe('authSecurity utilities', () => {
+
+  // ─────────────────────────────────────────────────────────
+  // hashIP()
+  // ─────────────────────────────────────────────────────────
+
   describe('hashIP()', () => {
     it('should return "unknown" when no IP is provided', () => {
       expect(hashIP()).to.equal('unknown');
@@ -44,6 +52,11 @@ describe('authSecurity utilities', () => {
     });
   });
 
+
+  // ─────────────────────────────────────────────────────────
+  // isTokenValidAfterChange()
+  // ─────────────────────────────────────────────────────────
+
   describe('isTokenValidAfterChange()', () => {
     it('should return true when passwordChangedAt is not provided', () => {
       expect(isTokenValidAfterChange(1000, null)).to.equal(true);
@@ -75,6 +88,11 @@ describe('authSecurity utilities', () => {
     });
   });
 
+
+  // ─────────────────────────────────────────────────────────
+  // generateJti()
+  // ─────────────────────────────────────────────────────────
+
   describe('generateJti()', () => {
     it('should generate a UUID', () => {
       const jti = generateJti();
@@ -93,11 +111,25 @@ describe('authSecurity utilities', () => {
     });
   });
 
+
+  // ─────────────────────────────────────────────────────────
+  // generateDeviceId()
+  // ─────────────────────────────────────────────────────────
+
   describe('generateDeviceId()', () => {
+
     it('should generate a SHA-256 device identifier', () => {
       const req = {
-        ip: '192.168.1.100',
-        get: () => 'Mozilla/5.0',
+        headers: {
+          'x-vercel-forwarded-for': '192.168.1.100',
+        },
+        get: (header) => {
+          if (header === 'user-agent') {
+            return 'Mozilla/5.0';
+          }
+
+          return undefined;
+        },
       };
 
       const deviceId = generateDeviceId(req);
@@ -106,10 +138,19 @@ describe('authSecurity utilities', () => {
       expect(deviceId).to.match(/^[a-f0-9]{64}$/);
     });
 
+
     it('should generate the same device ID for the same IP and user-agent', () => {
       const createRequest = () => ({
-        ip: '192.168.1.100',
-        get: () => 'Mozilla/5.0',
+        headers: {
+          'x-vercel-forwarded-for': '192.168.1.100',
+        },
+        get: (header) => {
+          if (header === 'user-agent') {
+            return 'Mozilla/5.0';
+          }
+
+          return undefined;
+        },
       });
 
       const first = generateDeviceId(createRequest());
@@ -118,22 +159,90 @@ describe('authSecurity utilities', () => {
       expect(first).to.equal(second);
     });
 
+
     it('should generate different device IDs for different user-agents', () => {
       const first = generateDeviceId({
-        ip: '192.168.1.100',
-        get: () => 'Mozilla/5.0',
+        headers: {
+          'x-vercel-forwarded-for': '192.168.1.100',
+        },
+        get: (header) => {
+          if (header === 'user-agent') {
+            return 'Mozilla/5.0';
+          }
+
+          return undefined;
+        },
       });
 
       const second = generateDeviceId({
-        ip: '192.168.1.100',
-        get: () => 'Chrome/153.0',
+        headers: {
+          'x-vercel-forwarded-for': '192.168.1.100',
+        },
+        get: (header) => {
+          if (header === 'user-agent') {
+            return 'Chrome/153.0';
+          }
+
+          return undefined;
+        },
       });
 
       expect(first).to.not.equal(second);
     });
 
-    it('should use socket IP when req.ip is unavailable', () => {
+
+    it('should generate different device IDs for different client IPs', () => {
+      const first = generateDeviceId({
+        headers: {
+          'x-vercel-forwarded-for': '192.168.1.100',
+        },
+        get: () => 'Mozilla/5.0',
+      });
+
+      const second = generateDeviceId({
+        headers: {
+          'x-vercel-forwarded-for': '192.168.1.101',
+        },
+        get: () => 'Mozilla/5.0',
+      });
+
+      expect(first).to.not.equal(second);
+    });
+
+
+    it('should use x-forwarded-for when x-vercel-forwarded-for is unavailable', () => {
       const req = {
+        headers: {
+          'x-forwarded-for': '192.168.1.100',
+        },
+        get: () => 'Mozilla/5.0',
+      };
+
+      const result = generateDeviceId(req);
+
+      expect(result).to.be.a('string');
+      expect(result).to.match(/^[a-f0-9]{64}$/);
+    });
+
+
+    it('should use cf-connecting-ip when Vercel headers are unavailable', () => {
+      const req = {
+        headers: {
+          'cf-connecting-ip': '192.168.1.100',
+        },
+        get: () => 'Mozilla/5.0',
+      };
+
+      const result = generateDeviceId(req);
+
+      expect(result).to.be.a('string');
+      expect(result).to.match(/^[a-f0-9]{64}$/);
+    });
+
+
+    it('should use socket remoteAddress when all proxy headers are unavailable', () => {
+      const req = {
+        headers: {},
         socket: {
           remoteAddress: '10.0.0.5',
         },
@@ -144,6 +253,61 @@ describe('authSecurity utilities', () => {
 
       expect(result).to.be.a('string');
       expect(result).to.match(/^[a-f0-9]{64}$/);
+    });
+
+
+    it('should use "unknown" when no IP information is available', () => {
+      const req = {
+        headers: {},
+        socket: {},
+        get: () => 'Mozilla/5.0',
+      };
+
+      const result = generateDeviceId(req);
+
+      expect(result).to.be.a('string');
+      expect(result).to.match(/^[a-f0-9]{64}$/);
+    });
+
+
+    it('should normalize IPv4-mapped IPv6 client addresses', () => {
+      const ipv4MappedRequest = {
+        headers: {
+          'x-vercel-forwarded-for': '::ffff:192.168.1.100',
+        },
+        get: () => 'Mozilla/5.0',
+      };
+
+      const normalIpv4Request = {
+        headers: {
+          'x-vercel-forwarded-for': '192.168.1.100',
+        },
+        get: () => 'Mozilla/5.0',
+      };
+
+      const mappedResult = generateDeviceId(ipv4MappedRequest);
+      const normalResult = generateDeviceId(normalIpv4Request);
+
+      expect(mappedResult).to.equal(normalResult);
+    });
+
+
+    it('should produce different device IDs when the user-agent is missing', () => {
+      const withUserAgent = generateDeviceId({
+        headers: {
+          'x-vercel-forwarded-for': '192.168.1.100',
+        },
+        get: () => 'Mozilla/5.0',
+      });
+
+      const withoutUserAgent = generateDeviceId({
+        headers: {
+          'x-vercel-forwarded-for': '192.168.1.100',
+        },
+        get: () => undefined,
+      });
+
+      expect(withUserAgent).to.not.equal(withoutUserAgent);
     });
   });
 });

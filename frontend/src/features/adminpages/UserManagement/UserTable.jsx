@@ -1,3 +1,4 @@
+// frontend/src/features/adminpages/UserManagement/UserTable.jsx
 import { Crown, Users, CheckCircle, Ban } from 'lucide-react';
 import UserActions from './UserActions';
 import { useNavigate } from 'react-router-dom';

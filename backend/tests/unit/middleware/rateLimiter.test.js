@@ -1,7 +1,7 @@
+// tests/unit/middleware/rateLimiter.test.js
 import express from 'express';
 import request from 'supertest';
 import { expect } from 'chai';
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 import {
   userReadLimiter,
@@ -263,99 +263,76 @@ describe('Rate limiting middleware', function () {
   // PASSKEY LIMITER
   // ─────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────────
-// PASSKEY LIMITER
-// ─────────────────────────────────────────────────────────────
-
-describe('passkeyLimiter()', () => {
-  it('should block the 11th unauthenticated request from the same IPv6 address', async () => {
-    /*
-     * Use a fresh limiter so this test is completely independent
-     * from the other passkey tests.
-     *
-     * The IPv6 address is deliberately hard-coded because the purpose
-     * of this test is to verify IP-based limiting with an IPv6 client.
-     */
-    const isolatedPasskeyLimiter = rateLimit({
-      windowMs: 60 * 1000,
-      max: 10,
-      standardHeaders: true,
-      legacyHeaders: false,
-
-      keyGenerator: (req) => {
-        if (req.user?._id) {
-          return `user_${req.user._id.toString()}`;
-        }
-
-        return ipKeyGenerator(req.ip);
-      },
-    });
-
-    const app = createApp(isolatedPasskeyLimiter, (req) => {
+  describe('passkeyLimiter()', () => {
+    it('should block the 11th unauthenticated request from the same IPv6 address', async () => {
       /*
-       * Express exposes req.ip through a getter, so direct assignment
-       * such as req.ip = '2001:db8::1' is not allowed.
+       * The production passkeyLimiter uses:
        *
-       * Defining the property on this individual request lets the test
-       * simulate a real IPv6 client without changing Express itself.
+       *     getClientIp(req)
+       *
+       * followed by:
+       *
+       *     ipKeyGenerator(...)
+       *
+       * Set the same IPv6 client address through the production
+       * proxy header so this test exercises the real IP extraction
+       * path instead of creating a separate test-only limiter.
        */
-      Object.defineProperty(req, 'ip', {
-        configurable: true,
-        value: '2001:db8::1',
+      const app = createApp(passkeyLimiter, (req) => {
+        req.headers['x-vercel-forwarded-for'] = '2001:db8::1';
       });
-    });
 
-    // First 10 requests from the same IPv6 address must be allowed.
-    for (let i = 0; i < 10; i++) {
+      // First 10 requests from the same IPv6 address must be allowed.
+      for (let i = 0; i < 10; i++) {
+        const response = await request(app).get('/test');
+
+        expect(response.status).to.equal(200);
+      }
+
+      // The 11th request from the same IPv6 address must be rejected.
       const response = await request(app).get('/test');
 
-      expect(response.status).to.equal(200);
-    }
-
-    // The 11th request from that same IPv6 address must be rejected.
-    const response = await request(app).get('/test');
-
-    expect(response.status).to.equal(429);
-  });
-
-  it('should use separate keys for different authenticated users', async () => {
-    let userNumber = 0;
-
-    const app = createApp(passkeyLimiter, (req) => {
-      userNumber += 1;
-
-      req.user = {
-        _id: `passkey-user-${userNumber}-${Date.now()}`,
-      };
+      expect(response.status).to.equal(429);
     });
 
-    for (let i = 0; i < 20; i++) {
-      const response = await request(app).get('/test');
+    it('should use separate keys for different authenticated users', async () => {
+      let userNumber = 0;
 
-      expect(response.status).to.equal(200);
-    }
-  });
+      const app = createApp(passkeyLimiter, (req) => {
+        userNumber += 1;
 
-  it('should block repeated requests from the same authenticated user', async () => {
-    const userId = `passkey-same-user-${Date.now()}-${Math.random()}`;
+        req.user = {
+          _id: `passkey-user-${userNumber}-${Date.now()}`,
+        };
+      });
 
-    const app = createApp(passkeyLimiter, (req) => {
-      req.user = {
-        _id: userId,
-      };
+      for (let i = 0; i < 20; i++) {
+        const response = await request(app).get('/test');
+
+        expect(response.status).to.equal(200);
+      }
     });
 
-    for (let i = 0; i < 10; i++) {
+    it('should block repeated requests from the same authenticated user', async () => {
+      const userId = `passkey-same-user-${Date.now()}-${Math.random()}`;
+
+      const app = createApp(passkeyLimiter, (req) => {
+        req.user = {
+          _id: userId,
+        };
+      });
+
+      for (let i = 0; i < 10; i++) {
+        const response = await request(app).get('/test');
+
+        expect(response.status).to.equal(200);
+      }
+
       const response = await request(app).get('/test');
 
-      expect(response.status).to.equal(200);
-    }
-
-    const response = await request(app).get('/test');
-
-    expect(response.status).to.equal(429);
+      expect(response.status).to.equal(429);
+    });
   });
-});
 
   // ─────────────────────────────────────────────────────────────
   // REFRESH TOKEN LIMITER

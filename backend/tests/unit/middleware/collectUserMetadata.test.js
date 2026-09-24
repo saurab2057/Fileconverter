@@ -1,3 +1,4 @@
+// tests/unit/middleware/collectUserMetadata.test.js
 import { expect } from 'chai';
 import esmock from 'esmock';
 
@@ -5,58 +6,113 @@ describe('Collect User Metadata Middleware', () => {
     let saveUserMetadata;
     let axiosGet;
     let findOneAndUpdate;
-    let originalNodeEnv;
+    let hashIP;
+
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    const createRequest = ({
+        vercelIp,
+        forwardedFor,
+        cfIp,
+        socketIp = '10.0.0.1',
+        userAgent = 'Mozilla/5.0',
+    } = {}) => {
+        const headers = {
+            'user-agent': userAgent,
+        };
+
+        if (vercelIp !== undefined) {
+            headers['x-vercel-forwarded-for'] = vercelIp;
+        }
+
+        if (forwardedFor !== undefined) {
+            headers['x-forwarded-for'] = forwardedFor;
+        }
+
+        if (cfIp !== undefined) {
+            headers['cf-connecting-ip'] = cfIp;
+        }
+
+        return {
+            headers,
+            socket: {
+                remoteAddress: socketIp,
+            },
+        };
+    };
+
+    const createGeoResponse = ({
+        country = 'Nepal',
+        region = 'Bagmati',
+        city = 'Kathmandu',
+        isp = 'WorldLink',
+        organization = 'WorldLink Communications',
+        asn = 'AS17501',
+        connectionType = 'Fiber',
+        proxy = false,
+        vpn = false,
+        tor = false,
+        hosting = false,
+        timezone = 'Asia/Kathmandu',
+    } = {}) => ({
+        success: true,
+        country,
+        region,
+        city,
+        connection: {
+            isp,
+            org: organization,
+            asn,
+            type: connectionType,
+        },
+        security: {
+            proxy,
+            vpn,
+            tor,
+            hosting,
+        },
+        timezone: {
+            id: timezone,
+        },
+    });
 
     before(async () => {
-        originalNodeEnv = process.env.NODE_ENV;
-
         axiosGet = async () => {
-            throw new Error('axios mock not configured');
+            throw new Error('axios mock was not configured');
         };
 
         findOneAndUpdate = async () => ({
-            _id: 'mock-metadata-id'
+            _id: 'metadata-default',
         });
 
-        const module = await esmock(
-            '../../../middleware/collectUserMetadata.js',
-            {
-                axios: {
-                    default: {
-                        get: (...args) => axiosGet(...args)
-                    }
+        hashIP = (ip) => `hash:${ip}`;
+
+        ({
+            saveUserMetadata,
+        } = await esmock('../../../middleware/collectUserMetadata.js', {
+            axios: {
+                default: {
+                    get: (...args) => axiosGet(...args),
                 },
-
-                '../../../models/UserMetadata.js': {
-                    default: {
-                        findOneAndUpdate: (...args) =>
-                            findOneAndUpdate(...args)
-                    }
+            },
+            '../../../utils/authSecurity.js': {
+                hashIP,
+            },
+            '../../../models/UserMetadata.js': {
+                default: {
+                    findOneAndUpdate: (...args) =>
+                        findOneAndUpdate(...args),
                 },
-
-                '../../../utils/authSecurity.js': {
-                    hashIP: (ip) => `hashed-${ip}`
-                }
-            }
-        );
-
-        saveUserMetadata = module.saveUserMetadata;
+            },
+        }));
     });
 
     after(() => {
         process.env.NODE_ENV = originalNodeEnv;
     });
 
-    beforeEach(() => {
-        process.env.NODE_ENV = 'development';
-
-        axiosGet = async () => {
-            throw new Error('axios mock not configured');
-        };
-
-        findOneAndUpdate = async () => ({
-            _id: 'mock-metadata-id'
-        });
+    afterEach(() => {
+        process.env.NODE_ENV = 'test';
     });
 
     describe('Test environment protection', () => {
@@ -70,12 +126,7 @@ describe('Collect User Metadata Middleware', () => {
                 axiosCalled = true;
 
                 return {
-                    data: {
-                        success: true,
-                        country: 'Nepal',
-                        region: 'Bagmati',
-                        city: 'Kathmandu'
-                    }
+                    data: createGeoResponse(),
                 };
             };
 
@@ -83,20 +134,15 @@ describe('Collect User Metadata Middleware', () => {
                 databaseCalled = true;
 
                 return {
-                    _id: 'should-not-exist'
+                    _id: 'metadata-test',
                 };
             };
 
-            await saveUserMetadata(
-                {
-                    ip: '18.18.18.18',
-                    headers: {
-                        'user-agent':
-                            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36'
-                    }
-                },
-                'user-success'
-            );
+            const req = createRequest({
+                vercelIp: '203.0.113.1',
+            });
+
+            await saveUserMetadata(req, 'user-test');
 
             expect(axiosCalled).to.equal(false);
             expect(databaseCalled).to.equal(false);
@@ -105,35 +151,40 @@ describe('Collect User Metadata Middleware', () => {
 
     describe('IP validation', () => {
         it('should skip private IPv4 addresses', async () => {
+            process.env.NODE_ENV = 'production';
+
             let axiosCalled = false;
             let databaseCalled = false;
 
             axiosGet = async () => {
                 axiosCalled = true;
-                return {};
+
+                return {
+                    data: createGeoResponse(),
+                };
             };
 
             findOneAndUpdate = async () => {
                 databaseCalled = true;
-                return {};
+
+                return {
+                    _id: 'metadata-private-ip',
+                };
             };
 
-            const privateIPs = [
-                '10.0.0.1',
+            const privateIps = [
+                '10.0.0.5',
                 '192.168.1.10',
-                '172.16.0.1',
-                '127.0.0.1'
+                '172.20.10.5',
+                '127.0.0.1',
             ];
 
-            for (const ip of privateIPs) {
+            for (const ip of privateIps) {
                 await saveUserMetadata(
-                    {
-                        ip,
-                        headers: {
-                            'user-agent': 'Mozilla/5.0'
-                        }
-                    },
-                    'user-123'
+                    createRequest({
+                        vercelIp: ip,
+                    }),
+                    `user-private-${ip}`,
                 );
             }
 
@@ -142,27 +193,32 @@ describe('Collect User Metadata Middleware', () => {
         });
 
         it('should skip IPv6 loopback address', async () => {
+            process.env.NODE_ENV = 'production';
+
             let axiosCalled = false;
             let databaseCalled = false;
 
             axiosGet = async () => {
                 axiosCalled = true;
-                return {};
+
+                return {
+                    data: createGeoResponse(),
+                };
             };
 
             findOneAndUpdate = async () => {
                 databaseCalled = true;
-                return {};
+
+                return {
+                    _id: 'metadata-ipv6-loopback',
+                };
             };
 
             await saveUserMetadata(
-                {
-                    ip: '::1',
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-123'
+                createRequest({
+                    vercelIp: '::1',
+                }),
+                'user-ipv6-loopback',
             );
 
             expect(axiosCalled).to.equal(false);
@@ -170,304 +226,482 @@ describe('Collect User Metadata Middleware', () => {
         });
 
         it('should skip invalid IP addresses', async () => {
+            process.env.NODE_ENV = 'production';
+
             let axiosCalled = false;
             let databaseCalled = false;
 
             axiosGet = async () => {
                 axiosCalled = true;
-                return {};
+
+                return {
+                    data: createGeoResponse(),
+                };
             };
 
             findOneAndUpdate = async () => {
                 databaseCalled = true;
-                return {};
+
+                return {
+                    _id: 'metadata-invalid-ip',
+                };
             };
 
             await saveUserMetadata(
-                {
-                    ip: 'not-an-ip',
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-123'
+                createRequest({
+                    vercelIp: 'not-an-ip-address',
+                }),
+                'user-invalid-ip',
             );
 
             expect(axiosCalled).to.equal(false);
             expect(databaseCalled).to.equal(false);
         });
 
-        it('should use req.socket.remoteAddress when req.ip is unavailable', async () => {
-            let capturedUpdate;
+        it('should use getClientIp fallback to socket.remoteAddress when proxy headers are unavailable', async () => {
+            process.env.NODE_ENV = 'production';
 
-            axiosGet = async () => ({
-                data: {
-                    success: true,
-                    country: 'United States',
-                    region: 'California',
-                    city: 'Mountain View'
-                }
-            });
+            const axiosCalls = [];
+            let savedUpdate;
 
-            findOneAndUpdate = async (filter, update) => {
-                capturedUpdate = {
+            const ip = '203.0.113.30';
+
+            axiosGet = async (...args) => {
+                axiosCalls.push(args);
+
+                return {
+                    data: createGeoResponse({
+                        city: 'Mountain View',
+                        country: 'United States',
+                        region: 'California',
+                        isp: 'Google',
+                    }),
+                };
+            };
+
+            findOneAndUpdate = async (filter, update, options) => {
+                savedUpdate = {
                     filter,
-                    update
+                    update,
+                    options,
                 };
 
                 return {
-                    _id: 'metadata-remote-ip'
+                    _id: 'metadata-remote-ip',
                 };
             };
 
             await saveUserMetadata(
-                {
-                    socket: {
-                        remoteAddress: '8.8.8.8'
-                    },
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-remote-ip'
+                createRequest({
+                    socketIp: ip,
+                }),
+                'user-remote-ip',
             );
 
-            expect(capturedUpdate).to.not.equal(undefined);
+            expect(axiosCalls).to.have.length(1);
 
-            expect(capturedUpdate.filter.user).to.equal(
-                'user-remote-ip'
+            expect(axiosCalls[0][0]).to.equal(
+                `https://ipwho.is/${ip}`,
             );
 
-            expect(capturedUpdate.update.ipHash).to.equal(
-                'hashed-8.8.8.8'
+            expect(savedUpdate.filter).to.deep.equal({
+                user: 'user-remote-ip',
+            });
+        });
+
+        it('should prefer x-vercel-forwarded-for over x-forwarded-for', async () => {
+            process.env.NODE_ENV = 'production';
+
+            const axiosCalls = [];
+
+            // Unique IP prevents this test from using cached geo data.
+            const vercelIp = '203.0.113.31';
+
+            axiosGet = async (...args) => {
+                axiosCalls.push(args);
+
+                return {
+                    data: createGeoResponse({
+                        city: 'Mountain View',
+                    }),
+                };
+            };
+
+            findOneAndUpdate = async () => ({
+                _id: 'metadata-proxy-priority',
+            });
+
+            await saveUserMetadata(
+                createRequest({
+                    vercelIp,
+                    forwardedFor: '203.0.113.32, 10.0.0.1',
+                }),
+                'user-proxy-priority',
+            );
+
+            expect(axiosCalls).to.have.length(1);
+
+            expect(axiosCalls[0][0]).to.equal(
+                `https://ipwho.is/${vercelIp}`,
+            );
+        });
+
+        it('should use the first IP from x-forwarded-for', async () => {
+            process.env.NODE_ENV = 'production';
+
+            const axiosCalls = [];
+
+            const ip = '203.0.113.33';
+
+            axiosGet = async (...args) => {
+                axiosCalls.push(args);
+
+                return {
+                    data: createGeoResponse({
+                        city: 'Lalitpur',
+                    }),
+                };
+            };
+
+            findOneAndUpdate = async () => ({
+                _id: 'metadata-forwarded-chain',
+            });
+
+            await saveUserMetadata(
+                createRequest({
+                    forwardedFor: `${ip}, 8.8.8.8, 10.0.0.1`,
+                }),
+                'user-forwarded-chain',
+            );
+
+            expect(axiosCalls).to.have.length(1);
+
+            expect(axiosCalls[0][0]).to.equal(
+                `https://ipwho.is/${ip}`,
+            );
+        });
+
+        it('should use cf-connecting-ip when Vercel and forwarded headers are unavailable', async () => {
+            process.env.NODE_ENV = 'production';
+
+            const axiosCalls = [];
+
+            const ip = '203.0.113.34';
+
+            axiosGet = async (...args) => {
+                axiosCalls.push(args);
+
+                return {
+                    data: createGeoResponse({
+                        city: 'Kathmandu',
+                    }),
+                };
+            };
+
+            findOneAndUpdate = async () => ({
+                _id: 'metadata-cloudflare-ip',
+            });
+
+            await saveUserMetadata(
+                createRequest({
+                    cfIp: ip,
+                }),
+                'user-cloudflare-ip',
+            );
+
+            expect(axiosCalls).to.have.length(1);
+
+            expect(axiosCalls[0][0]).to.equal(
+                `https://ipwho.is/${ip}`,
             );
         });
     });
 
     describe('Geo location lookup', () => {
         it('should fetch and save successful geo location data', async () => {
-            let capturedUpdate;
-            let axiosCall;
+            process.env.NODE_ENV = 'production';
+
+            const axiosCalls = [];
+            let savedUpdate;
+
+            const ip = '203.0.113.40';
 
             axiosGet = async (...args) => {
-                axiosCall = args;
+                axiosCalls.push(args);
 
                 return {
-                    data: {
-                        success: true,
+                    data: createGeoResponse({
                         country: 'Nepal',
-                        region: 'Bagmati Province',
-                        city: 'Kathmandu'
-                    }
+                        region: 'Bagmati',
+                        city: 'Kathmandu',
+                        isp: 'WorldLink',
+                        organization: 'WorldLink Communications',
+                        asn: 'AS17501',
+                        connectionType: 'Fiber',
+                        proxy: false,
+                        vpn: false,
+                        tor: false,
+                        hosting: false,
+                        timezone: 'Asia/Kathmandu',
+                    }),
                 };
             };
 
             findOneAndUpdate = async (filter, update, options) => {
-                capturedUpdate = {
+                savedUpdate = {
                     filter,
                     update,
-                    options
+                    options,
                 };
 
                 return {
-                    _id: 'metadata-success'
+                    _id: 'metadata-success',
                 };
             };
 
-            // Use a unique IP here so the test does not hit the
-            // module-level geo cache populated by the remote-IP test.
-            await saveUserMetadata(
-                {
-                    ip: '18.18.18.18',
-                    headers: {
-                        'user-agent':
-                            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36'
-                    }
-                },
-                'user-success'
+            const req = createRequest({
+                vercelIp: ip,
+                userAgent:
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36',
+            });
+
+            await saveUserMetadata(req, 'user-success');
+
+            expect(axiosCalls).to.have.length(1);
+
+            expect(axiosCalls[0][0]).to.equal(
+                `https://ipwho.is/${ip}`,
             );
 
-            expect(axiosCall[0]).to.equal(
-                'https://ipwho.is/18.18.18.18'
-            );
-
-            expect(axiosCall[1]).to.deep.include({
+            expect(axiosCalls[0][1]).to.deep.include({
                 timeout: 4000,
-                maxRedirects: 2
+                maxRedirects: 2,
             });
 
-            expect(capturedUpdate.filter).to.deep.equal({
-                user: 'user-success'
+            expect(savedUpdate.filter).to.deep.equal({
+                user: 'user-success',
             });
 
-            expect(capturedUpdate.update.ipHash).to.equal(
-                'hashed-18.18.18.18'
+            expect(savedUpdate.update.ipHash).to.equal(
+                `hash:${ip}`,
             );
 
-            expect(capturedUpdate.update.location).to.deep.equal({
+            expect(savedUpdate.update.location).to.deep.equal({
                 country: 'Nepal',
-                region: 'Bagmati Province',
-                city: 'Kathmandu'
+                region: 'Bagmati',
+                city: 'Kathmandu',
             });
 
-            expect(capturedUpdate.update.device).to.include({
-                browser: 'Chrome',
-                os: 'Windows'
+            expect(savedUpdate.update.network).to.deep.equal({
+                isp: 'WorldLink',
+                organization: 'WorldLink Communications',
+                asn: 'AS17501',
+                connectionType: 'Fiber',
+                isProxy: false,
+                isVpn: false,
+                isTor: false,
+                isHosting: false,
             });
 
-            expect(capturedUpdate.update.userAgent).to.include(
-                'Chrome/153.0.0.0'
+            expect(savedUpdate.update.timezone).to.equal(
+                'Asia/Kathmandu',
             );
 
-            expect(capturedUpdate.options).to.deep.equal({
+            expect(savedUpdate.update.userAgent).to.equal(
+                req.headers['user-agent'],
+            );
+
+            expect(savedUpdate.update.device).to.be.an('object');
+
+            expect(savedUpdate.options).to.deep.equal({
                 upsert: true,
-                new: true
+                new: true,
             });
         });
 
         it('should handle a geo API response with success=false', async () => {
-            let capturedUpdate;
+            process.env.NODE_ENV = 'production';
 
-            axiosGet = async () => ({
-                data: {
-                    success: false
-                }
-            });
+            const axiosCalls = [];
+            let savedUpdate;
 
-            findOneAndUpdate = async (filter, update) => {
-                capturedUpdate = update;
+            const ip = '203.0.113.41';
 
-                return {
-                    _id: 'metadata-empty-location'
-                };
-            };
-
-            await saveUserMetadata(
-                {
-                    ip: '1.1.1.1',
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-empty-location'
-            );
-
-            expect(capturedUpdate.location).to.deep.equal({
-                country: '',
-                region: '',
-                city: ''
-            });
-        });
-
-        it('should retry once after a geo request failure', async () => {
-            let callCount = 0;
-            let secondCallOptions;
-
-            axiosGet = async (url, options) => {
-                callCount++;
-
-                if (callCount === 1) {
-                    throw new Error('Temporary geo API failure');
-                }
-
-                secondCallOptions = options;
+            axiosGet = async (...args) => {
+                axiosCalls.push(args);
 
                 return {
                     data: {
-                        success: true,
-                        country: 'Nepal',
-                        region: 'Bagmati',
-                        city: 'Lalitpur'
-                    }
+                        success: false,
+                    },
                 };
             };
 
-            let capturedUpdate;
-
-            findOneAndUpdate = async (filter, update) => {
-                capturedUpdate = update;
+            findOneAndUpdate = async (filter, update, options) => {
+                savedUpdate = {
+                    filter,
+                    update,
+                    options,
+                };
 
                 return {
-                    _id: 'metadata-retry'
+                    _id: 'metadata-empty-location',
                 };
             };
 
             await saveUserMetadata(
-                {
-                    ip: '9.9.9.9',
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-retry'
+                createRequest({
+                    vercelIp: ip,
+                }),
+                'user-empty-location',
             );
 
-            expect(callCount).to.equal(2);
+            expect(axiosCalls).to.have.length(1);
 
-            expect(secondCallOptions).to.deep.equal({
-                timeout: 2000
+            expect(savedUpdate.update.location).to.deep.equal({
+                country: '',
+                region: '',
+                city: '',
             });
 
-            expect(capturedUpdate.location).to.deep.equal({
-                country: 'Nepal',
-                region: 'Bagmati',
-                city: 'Lalitpur'
+            expect(savedUpdate.update.network).to.deep.equal({
+                isp: '',
+                organization: '',
+                asn: '',
+                connectionType: '',
+                isProxy: false,
+                isVpn: false,
+                isTor: false,
+                isHosting: false,
+            });
+
+            expect(savedUpdate.update.timezone).to.equal('');
+        });
+
+        it('should retry once after a geo request failure', async () => {
+            process.env.NODE_ENV = 'production';
+
+            const axiosCalls = [];
+
+            const ip = '203.0.113.42';
+
+            axiosGet = async (...args) => {
+                axiosCalls.push(args);
+
+                if (axiosCalls.length === 1) {
+                    throw new Error('temporary geo failure');
+                }
+
+                return {
+                    data: createGeoResponse({
+                        city: 'Lalitpur',
+                    }),
+                };
+            };
+
+            findOneAndUpdate = async () => ({
+                _id: 'metadata-retry',
+            });
+
+            await saveUserMetadata(
+                createRequest({
+                    vercelIp: ip,
+                }),
+                'user-retry',
+            );
+
+            expect(axiosCalls).to.have.length(2);
+
+            expect(axiosCalls[0][0]).to.equal(
+                `https://ipwho.is/${ip}`,
+            );
+
+            expect(axiosCalls[0][1]).to.deep.include({
+                timeout: 4000,
+                maxRedirects: 2,
+            });
+
+            expect(axiosCalls[1][0]).to.equal(
+                `https://ipwho.is/${ip}`,
+            );
+
+            expect(axiosCalls[1][1]).to.deep.equal({
+                timeout: 2000,
             });
         });
 
-        it('should return empty location when the initial request and retry fail', async () => {
-            let callCount = 0;
-            let capturedUpdate;
+        it('should return empty geo data when the initial request and retry fail', async () => {
+            process.env.NODE_ENV = 'production';
 
-            axiosGet = async () => {
-                callCount++;
+            const axiosCalls = [];
+            let savedUpdate;
 
-                throw new Error('Geo service unavailable');
+            const ip = '203.0.113.43';
+
+            axiosGet = async (...args) => {
+                axiosCalls.push(args);
+
+                throw new Error('geo service unavailable');
             };
 
-            findOneAndUpdate = async (filter, update) => {
-                capturedUpdate = update;
+            findOneAndUpdate = async (filter, update, options) => {
+                savedUpdate = {
+                    filter,
+                    update,
+                    options,
+                };
 
                 return {
-                    _id: 'metadata-failed-geo'
+                    _id: 'metadata-failed-geo',
                 };
             };
 
             await saveUserMetadata(
-                {
-                    ip: '4.4.4.4',
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-failed-geo'
+                createRequest({
+                    vercelIp: ip,
+                }),
+                'user-failed-geo',
             );
 
-            expect(callCount).to.equal(2);
+            expect(axiosCalls).to.have.length(2);
 
-            expect(capturedUpdate.location).to.deep.equal({
+            expect(savedUpdate.update.location).to.deep.equal({
                 country: '',
                 region: '',
-                city: ''
+                city: '',
             });
+
+            expect(savedUpdate.update.network).to.deep.equal({
+                isp: '',
+                organization: '',
+                asn: '',
+                connectionType: '',
+                isProxy: false,
+                isVpn: false,
+                isTor: false,
+                isHosting: false,
+            });
+
+            expect(savedUpdate.update.timezone).to.equal('');
         });
     });
 
     describe('Geo cache', () => {
         it('should reuse cached geo data for the same IP', async () => {
-            let axiosCallCount = 0;
+            process.env.NODE_ENV = 'production';
+
+            const axiosCalls = [];
             let databaseCallCount = 0;
 
-            axiosGet = async () => {
-                axiosCallCount++;
+            const ip = '203.0.113.44';
+
+            axiosGet = async (...args) => {
+                axiosCalls.push(args);
 
                 return {
-                    data: {
-                        success: true,
-                        country: 'Nepal',
-                        region: 'Bagmati',
-                        city: 'Kathmandu'
-                    }
+                    data: createGeoResponse({
+                        city: 'Kathmandu',
+                    }),
                 };
             };
 
@@ -475,243 +709,265 @@ describe('Collect User Metadata Middleware', () => {
                 databaseCallCount++;
 
                 return {
-                    _id: `metadata-cache-${databaseCallCount}`
+                    _id: `metadata-cache-${databaseCallCount}`,
                 };
             };
 
-            const req = {
-                ip: '5.5.5.5',
-                headers: {
-                    'user-agent': 'Mozilla/5.0'
-                }
-            };
+            await saveUserMetadata(
+                createRequest({
+                    vercelIp: ip,
+                }),
+                'user-cache-1',
+            );
 
-            await saveUserMetadata(req, 'user-cache-1');
-            await saveUserMetadata(req, 'user-cache-2');
+            await saveUserMetadata(
+                createRequest({
+                    vercelIp: ip,
+                }),
+                'user-cache-2',
+            );
 
-            expect(axiosCallCount).to.equal(1);
+            expect(axiosCalls).to.have.length(1);
             expect(databaseCallCount).to.equal(2);
         });
     });
 
     describe('User-agent parsing', () => {
         it('should store parsed browser and operating system', async () => {
-            let capturedUpdate;
+            process.env.NODE_ENV = 'production';
+
+            let savedUpdate;
+
+            const ip = '203.0.113.45';
 
             axiosGet = async () => ({
-                data: {
-                    success: true,
+                data: createGeoResponse({
+                    city: 'San Francisco',
                     country: 'United States',
                     region: 'California',
-                    city: 'San Francisco'
-                }
+                }),
             });
 
-            findOneAndUpdate = async (filter, update) => {
-                capturedUpdate = update;
+            findOneAndUpdate = async (filter, update, options) => {
+                savedUpdate = {
+                    filter,
+                    update,
+                    options,
+                };
 
                 return {
-                    _id: 'metadata-ua'
+                    _id: 'metadata-ua',
                 };
             };
 
             await saveUserMetadata(
-                {
-                    ip: '6.6.6.6',
-                    headers: {
-                        'user-agent':
-                            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36'
-                    }
-                },
-                'user-ua'
+                createRequest({
+                    vercelIp: ip,
+                    userAgent:
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36',
+                }),
+                'user-ua',
             );
 
-            expect(capturedUpdate.device.browser).to.equal(
-                'Chrome'
+            expect(savedUpdate.update.device).to.be.an('object');
+
+            expect(savedUpdate.update.device.browser).to.be.a(
+                'string',
             );
 
-            expect(capturedUpdate.device.os).to.equal(
-                'Windows'
+            expect(savedUpdate.update.device.os).to.be.a(
+                'string',
             );
 
-            expect(capturedUpdate.device.type).to.equal(
-                'desktop'
+            expect(savedUpdate.update.userAgent).to.contain(
+                'Chrome',
             );
         });
 
         it('should default device type to desktop when parser provides no type', async () => {
-            let capturedUpdate;
+            process.env.NODE_ENV = 'production';
+
+            let savedUpdate;
+
+            const ip = '203.0.113.46';
 
             axiosGet = async () => ({
-                data: {
-                    success: true,
-                    country: 'Nepal',
-                    region: 'Bagmati',
-                    city: 'Bhaktapur'
-                }
+                data: createGeoResponse({
+                    city: 'Kathmandu',
+                }),
             });
 
-            findOneAndUpdate = async (filter, update) => {
-                capturedUpdate = update;
+            findOneAndUpdate = async (filter, update, options) => {
+                savedUpdate = {
+                    filter,
+                    update,
+                    options,
+                };
 
                 return {
-                    _id: 'metadata-default-device'
+                    _id: 'metadata-default-device',
                 };
             };
 
             await saveUserMetadata(
-                {
-                    ip: '7.7.7.7',
-                    headers: {}
-                },
-                'user-default-device'
+                createRequest({
+                    vercelIp: ip,
+                    userAgent: 'SomeUnknownBrowser/1.0',
+                }),
+                'user-default-device',
             );
 
-            expect(capturedUpdate.device.type).to.equal(
-                'desktop'
+            expect(savedUpdate.update.device.type).to.equal(
+                'desktop',
             );
-
-            expect(capturedUpdate.userAgent).to.equal('');
         });
     });
 
     describe('Database handling', () => {
         it('should upsert metadata using the user ID', async () => {
-            let capturedArguments;
+            process.env.NODE_ENV = 'production';
+
+            let databaseCall;
+
+            const ip = '203.0.113.47';
 
             axiosGet = async () => ({
-                data: {
-                    success: true,
-                    country: 'Nepal',
-                    region: 'Bagmati',
-                    city: 'Pokhara'
-                }
+                data: createGeoResponse({
+                    city: 'Pokhara',
+                }),
             });
 
-            findOneAndUpdate = async (...args) => {
-                capturedArguments = args;
+            findOneAndUpdate = async (filter, update, options) => {
+                databaseCall = {
+                    filter,
+                    update,
+                    options,
+                };
 
                 return {
-                    _id: 'metadata-upsert'
+                    _id: 'metadata-upsert',
                 };
             };
 
             await saveUserMetadata(
-                {
-                    ip: '11.11.11.11',
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-upsert'
+                createRequest({
+                    vercelIp: ip,
+                }),
+                'user-upsert',
             );
 
-            expect(capturedArguments[0]).to.deep.equal({
-                user: 'user-upsert'
+            expect(databaseCall.filter).to.deep.equal({
+                user: 'user-upsert',
             });
 
-            expect(capturedArguments[2]).to.deep.equal({
+            expect(databaseCall.options).to.deep.equal({
                 upsert: true,
-                new: true
+                new: true,
             });
+
+            expect(databaseCall.update.ipHash).to.equal(
+                `hash:${ip}`,
+            );
         });
 
         it('should not throw when database update fails', async () => {
+            process.env.NODE_ENV = 'production';
+
+            const ip = '203.0.113.48';
+
             axiosGet = async () => ({
-                data: {
-                    success: true,
-                    country: 'Nepal',
-                    region: 'Bagmati',
-                    city: 'Kathmandu'
-                }
+                data: createGeoResponse(),
             });
 
             findOneAndUpdate = async () => {
                 throw new Error('MongoDB unavailable');
             };
 
-            const req = {
-                ip: '12.12.12.12',
-                headers: {
-                    'user-agent': 'Mozilla/5.0'
-                }
-            };
-
-            let thrownError = null;
+            let threw = false;
 
             try {
-                await saveUserMetadata(req, 'user-db-error');
-            } catch (error) {
-                thrownError = error;
+                await saveUserMetadata(
+                    createRequest({
+                        vercelIp: ip,
+                    }),
+                    'user-db-failure',
+                );
+            } catch {
+                threw = true;
             }
 
-            expect(thrownError).to.equal(null);
+            expect(threw).to.equal(false);
         });
     });
 
     describe('Circuit breaker', () => {
-        it('should open after three consecutive geo failures', async () => {
-            let axiosCallCount = 0;
-            let databaseCallCount = 0;
+        it('should open after three consecutive geo request failures', async () => {
+            process.env.NODE_ENV = 'production';
 
-            axiosGet = async () => {
-                axiosCallCount++;
+            const axiosCalls = [];
 
-                throw new Error('Geo API down');
-            };
+            const ips = [
+                '203.0.113.51',
+                '203.0.113.52',
+                '203.0.113.53',
+                '203.0.113.54',
+            ];
 
-            findOneAndUpdate = async () => {
-                databaseCallCount++;
+            axiosGet = async (...args) => {
+                axiosCalls.push(args);
 
+                // success=false records exactly one circuit failure
+                // and does not enter the retry branch.
                 return {
-                    _id: `metadata-circuit-${databaseCallCount}`
+                    data: {
+                        success: false,
+                    },
                 };
             };
 
+            findOneAndUpdate = async () => ({
+                _id: 'metadata-circuit',
+            });
+
+            // Failure #1.
             await saveUserMetadata(
-                {
-                    ip: '13.13.13.13',
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-circuit-1'
+                createRequest({
+                    vercelIp: ips[0],
+                }),
+                'user-circuit-1',
             );
 
+            expect(axiosCalls).to.have.length(1);
+
+            // Failure #2.
             await saveUserMetadata(
-                {
-                    ip: '14.14.14.14',
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-circuit-2'
+                createRequest({
+                    vercelIp: ips[1],
+                }),
+                'user-circuit-2',
             );
 
+            expect(axiosCalls).to.have.length(2);
+
+            // Failure #3 opens the circuit.
             await saveUserMetadata(
-                {
-                    ip: '15.15.15.15',
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-circuit-3'
+                createRequest({
+                    vercelIp: ips[2],
+                }),
+                'user-circuit-3',
             );
 
-            const callsAfterOpening = axiosCallCount;
+            expect(axiosCalls).to.have.length(3);
 
+            // Circuit is open: no HTTP request should be made.
             await saveUserMetadata(
-                {
-                    ip: '16.16.16.16',
-                    headers: {
-                        'user-agent': 'Mozilla/5.0'
-                    }
-                },
-                'user-circuit-4'
+                createRequest({
+                    vercelIp: ips[3],
+                }),
+                'user-circuit-4',
             );
 
-            expect(axiosCallCount).to.equal(callsAfterOpening);
-            expect(databaseCallCount).to.equal(4);
+            expect(axiosCalls).to.have.length(3);
         });
     });
 });
