@@ -23,24 +23,27 @@ import GoogleAuthLayout from '@/lib/GoogleAuthLayout';
 // there is zero layout shift when the real chunk arrives.
 // ─────────────────────────────────────────────────────────────
 import MainLayoutSkeleton from '@/components/skeleton/MainLayoutSkeleton';
-import AuthPageSkeleton   from '@/components/skeleton/AuthPageSkeleton';
-import DashboardSkeleton  from '@/components/skeleton/DashboardSkeleton';
+import AuthPageSkeleton from '@/components/skeleton/AuthPageSkeleton';
+import DashboardSkeleton from '@/components/skeleton/DashboardSkeleton';
 
 // ─────────────────────────────────────────────────────────────
 // Lazy-loaded routes
 // ─────────────────────────────────────────────────────────────
-const MainLayout            = lazy(() => import('@/components/layout/MainLayout'));
-const HomePage              = lazy(() => import('@/components/layout/Home'));
-const SignUpForm             = lazy(() => import('@/features/authpages/Signup'));
-const LoginForm             = lazy(() => import('@/features/authpages/Login'));
-const ResetPasswordPage     = lazy(() => import('@/features/authpages/Resetpassword'));
-const ForgotPasswordPage    = lazy(() => import('@/features/authpages/Forgetpassword'));
-const PasskeyLogin          = lazy(() => import('@/features/authpages/PasskeyLogin'));
-const DynamicConverterPage  = lazy(() => import('@/features/conversion/pages/DynamicConverterPage'));
+const MainLayout = lazy(() => import('@/components/layout/MainLayout'));
+const HomePage = lazy(() => import('@/components/layout/Home'));
+const SignUpForm = lazy(() => import('@/features/authpages/Signup'));
+const SignupVerification = lazy(() => import('@/features/authpages/SignupVerification'));
+const VerifySignupEmail = lazy(() => import('@/features/authpages/VerifySignupEmail'));
+const SignupComplete = lazy(() => import('@/features/authpages/SignupComplete'));
+const LoginForm = lazy(() => import('@/features/authpages/Login'));
+const ResetPasswordPage = lazy(() => import('@/features/authpages/Resetpassword'));
+const ForgotPasswordPage = lazy(() => import('@/features/authpages/Forgetpassword'));
+const PasskeyLogin = lazy(() => import('@/features/authpages/PasskeyLogin'));
+const DynamicConverterPage = lazy(() => import('@/features/conversion/pages/DynamicConverterPage'));
 const DynamicCompressorPage = lazy(() => import('@/features/compression/pages/DynamicCompressorPage'));
-const SummarizerPage        = lazy(() => import('@/features/summarizer/pages/SummarizerPage'));
-const UserDashboard         = lazy(() => import('@/components/layout/Dashboard/UserDashboard'));
-const AdminRoutes           = lazy(() => import('@/routes/AdminRoutes'));
+const SummarizerPage = lazy(() => import('@/features/summarizer/pages/SummarizerPage'));
+const UserDashboard = lazy(() => import('@/components/layout/Dashboard/UserDashboard'));
+const AdminRoutes = lazy(() => import('@/routes/AdminRoutes'));
 
 // ─────────────────────────────────────────────────────────────
 // AdminRoutes gets a minimal spinner — admin traffic is low and
@@ -62,6 +65,9 @@ const AdminFallback = () => (
 const AUTH_ROUTES = [
   '/login',
   '/signup',
+  '/signup/check-email',
+  '/signup/verify-email',
+  '/signup/complete',
   '/passkey-login',
   '/forgot-password',
   '/reset-password',
@@ -71,7 +77,7 @@ const AuthShell = ({ children }) => {
   const { pathname } = useLocation();
 
   const loadingFallback = useMemo(() => {
-    if (AUTH_ROUTES.includes(pathname))    return <AuthPageSkeleton />;
+    if (AUTH_ROUTES.includes(pathname)) return <AuthPageSkeleton />;
     if (pathname.startsWith('/dashboard')) return <DashboardSkeleton />;
     return <MainLayoutSkeleton />;
   }, [pathname]);
@@ -128,8 +134,8 @@ function App() {
                   >
                     <Route index element={<HomePage />} />
                     <Route path="/convert/:from/:to" element={<DynamicConverterPage />} />
-                    <Route path="/compress/:type"    element={<DynamicCompressorPage />} />
-                    <Route path="/ai/summarizer"     element={<SummarizerPage />} />
+                    <Route path="/compress/:type" element={<DynamicCompressorPage />} />
+                    <Route path="/ai/summarizer" element={<SummarizerPage />} />
                   </Route>
 
                   {/* ── Auth routes ───────────────────────────────
@@ -143,8 +149,11 @@ function App() {
                       </Suspense>
                     }
                   >
-                    <Route path="/login"  element={<LoginForm />} />
+                    <Route path="/login" element={<LoginForm />} />
                     <Route path="/signup" element={<SignUpForm />} />
+                    <Route path="/signup/check-email" element={<SignupVerification />} />
+                    <Route path="/signup/verify-email"element={<VerifySignupEmail />}/>
+                    <Route path="/signup/complete" element={<SignupComplete />} />
                   </Route>
 
                   {/* Standalone auth pages — same dark skeleton */}

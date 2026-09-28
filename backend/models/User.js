@@ -30,6 +30,14 @@ const UserSchema = new mongoose.Schema({
     default: 'email',
     enum: ['email', 'google']
   },
+  emailVerified: {
+    type: Boolean,
+    default: false,
+  },
+  emailVerifiedAt: {
+    type: Date,
+    default: null,
+  },
   status: {
     type: String,
     enum: ['active', 'banned'],

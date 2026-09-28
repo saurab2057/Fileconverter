@@ -25,29 +25,48 @@ export const loginSchema = z.object({
 });
 
 // ─────────────────────────────────────────────────────────────
-// SIGNUP SCHEMA
+// SIGNUP START SCHEMA
 // ─────────────────────────────────────────────────────────────
-export const signupSchema = z
+
+export const signupSchema = z.object({
+  email: z
+    .string()
+    .min(1, 'Email is required')
+    .email('Please enter a valid email address'),
+});
+
+// ─────────────────────────────────────────────────────────────
+// SIGNUP COMPLETE SCHEMA
+// ─────────────────────────────────────────────────────────────
+
+export const signupCompleteSchema = z
   .object({
     name: z
       .string()
       .min(1, 'Name is required')
-      .max(100, 'Name must be less than 100 characters')
+      .max(100, 'Name must be 100 characters or less')
       .trim(),
-    email: z
-      .string()
-      .min(1, 'Email is required')
-      .email('Please enter a valid email address'),
+
     password: passwordSchema,
-    confirmPassword: z.string().min(1, 'Please confirm your password'),
-    acceptTerms: z.literal(true, {
-      errorMap: () => ({ message: 'You must accept the terms' }),
-    }),
+
+    confirmPassword: z
+      .string()
+      .min(1, 'Please confirm your password'),
+
+    termsAccepted: z
+      .boolean()
+      .refine(
+        (value) => value === true,
+        'You must accept the terms and conditions'
+      ),
   })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
-  });
+  .refine(
+    (data) => data.password === data.confirmPassword,
+    {
+      message: 'Passwords do not match',
+      path: ['confirmPassword'],
+    }
+  );
 
 // ─────────────────────────────────────────────────────────────
 // FORGOT PASSWORD SCHEMA

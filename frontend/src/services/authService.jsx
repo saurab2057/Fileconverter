@@ -11,7 +11,7 @@ import apiClient from '@/lib/api';
 export const authService = {
   /**
    * Login with email and password.
-   * @param {Object} credentials - { email, password, recaptchaToken }
+   * @param {Object} credentials - { email, recaptchaToken }
    * @returns {Promise} - { accessToken, user }
    */
   login: async (credentials) => {
@@ -24,20 +24,79 @@ export const authService = {
   },
 
   /**
-   * Register a new user.
-   * @param {Object} userData - { name, email, password, confirmPassword, recaptchaToken }
+   * Start email signup verification.
+   *
+   * Sends a 3-minute verification link to the supplied email.
+   * No User account is created at this stage.
+   *
+   * @param {Object} signupData - { email, recaptchaToken }
    * @returns {Promise} - { message }
    */
-  signup: async (userData) => {
-    const { data } = await apiClient.post('/api/auth/signup', {
-      name: userData.name,
-      email: userData.email,
-      password: userData.password,
-      confirmPassword: userData.confirmPassword,
-      'recaptcha-token': userData.recaptchaToken,
+  signupStart: async (signupData) => {
+    const { data } = await apiClient.post('/api/auth/signup/start', {
+      email: signupData.email,
+      'recaptcha-token': signupData.recaptchaToken,
     });
     return data;
   },
+
+  /**
+   * Verify the email signup token.
+   *
+   * The backend consumes the one-time verification token and
+   * creates the temporary 5-minute signup session cookie.
+   *
+   * @param {string} token - Verification token from email link
+   * @returns {Promise} - { message }
+   */
+  verifySignupEmail: async (token) => {
+    const { data } = await apiClient.post(
+      '/api/auth/signup/verify-email',
+      { token }
+    );
+    return data;
+  },
+
+  /**
+   * Complete the email signup.
+   *
+   * The email is NOT sent by the frontend.
+   * The backend derives the verified email from the
+   * server-side signup_session cookie.
+   *
+   * @param {Object} signupData - { name, password, confirmPassword, termsAccepted }
+   * @returns {Promise} - { message }
+   */
+  completeSignup: async (signupData) => {
+    const { data } = await apiClient.post(
+      '/api/auth/signup/complete',
+      {
+        name: signupData.name,
+        password: signupData.password,
+        confirmPassword: signupData.confirmPassword,
+        termsAccepted: signupData.termsAccepted,
+      }
+    );
+    return data;
+  },
+
+  /**
+   * Resend the email signup verification link.
+   *
+   * @param {Object} signupData - { email, recaptchaToken }
+   * @returns {Promise} - { message }
+   */
+  resendSignupVerification: async (signupData) => {
+    const { data } = await apiClient.post(
+      '/api/auth/signup/resend-verification',
+      {
+        email: signupData.email,
+        'recaptcha-token': signupData.recaptchaToken,
+      }
+    );
+    return data;
+  },
+
   /**
    * Request a password reset email.
    * @param {string} email - User's registered email
@@ -58,7 +117,10 @@ export const authService = {
    * @returns {Promise} - { valid, redirectUrl }
    */
   validateResetToken: async (token) => {
-    const { data } = await apiClient.post('/api/auth/validate-reset-token', { token });
+    const { data } = await apiClient.post(
+      '/api/auth/validate-reset-token',
+      { token }
+    );
     return data;
   },
 
@@ -68,7 +130,9 @@ export const authService = {
    * @returns {Promise} - { message }
    */
   resetPassword: async (newPassword) => {
-    const { data } = await apiClient.post('/api/auth/reset-password', { newPassword });
+    const { data } = await apiClient.post('/api/auth/reset-password', {
+      newPassword,
+    });
     return data;
   },
 
@@ -108,7 +172,7 @@ export const authService = {
 
   /**
    * Revoke a specific session by its ID.
-   * @param {string} sessionId - Session ID to revoke
+   * @param {string} sessionId - Session ID to revoke.
    * @returns {Promise}
    */
   revokeSession: async (sessionId) => {

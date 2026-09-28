@@ -1,24 +1,36 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+
 import User from '../../models/User.js';
 import Session from '../../models/Session.js';
+import SignupVerification from '../../models/SignUpemailVerification.js';
 import { saveUserMetadata } from '../../middleware/collectUserMetadata.js';
-import { hashIP, generateJti, generateDeviceId } from '../../utils/authSecurity.js';
+import {
+  hashIP,
+  generateJti,
+  generateDeviceId
+} from '../../utils/authSecurity.js';
 import { logUserActivity } from '../../middleware/auditLogger.js';
 import { getClientIp } from '../../utils/clientIp.js';
 
 // ─────────────────────────────────────────────────────────────
 // CORE HELPER: handleLoginSuccess
 // ─────────────────────────────────────────────────────────────
-export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) => {
+export const handleLoginSuccess = async (
+  res,
+  user,
+  req,
+  { redirectTo } = {}
+) => {
   const accessTokenSecret = process.env.ACCESS_SECRET_KEY;
   const refreshTokenSecret = process.env.REFRESH_SECRET_KEY;
-  const accessTokenExpiry = process.env.ACCESS_TOKEN_EXPIRY || '15m';
-  const refreshTokenExpiry = process.env.REFRESH_TOKEN_EXPIRY || '7d';
+  const accessTokenExpiry =
+    process.env.ACCESS_TOKEN_EXPIRY || '15m';
+  const refreshTokenExpiry =
+    process.env.REFRESH_TOKEN_EXPIRY || '7d';
 
   try {
-    console.log(`🔍 [DEBUG] handleLoginSuccess: Generating tokens for user ${user._id}`);
 
     const accessToken = jwt.sign(
       {
@@ -28,8 +40,10 @@ export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) =>
           email: user.email,
           role: user.role,
           status: user.status,
-          profilePictureUrl: user.profilePictureUrl || null,
-          authProvider: user.authProvider || 'email',
+          profilePictureUrl:
+            user.profilePictureUrl || null,
+          authProvider:
+            user.authProvider || 'email',
         }
       },
       accessTokenSecret,
@@ -37,36 +51,56 @@ export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) =>
     );
 
     const jti = generateJti();
+
     const refreshToken = jwt.sign(
-      { userId: user._id.toString(), jti },
+      {
+        userId: user._id.toString(),
+        jti
+      },
       refreshTokenSecret,
       { expiresIn: refreshTokenExpiry }
     );
 
     const ip = getClientIp(req);
-    const userAgent = req.get('user-agent') || 'unknown';
+    const userAgent =
+      req.get('user-agent') || 'unknown';
     const deviceId = generateDeviceId(req);
 
     await Session.findOneAndUpdate(
-      { user: user._id, deviceId },
+      {
+        user: user._id,
+        deviceId
+      },
       {
         jti,
         userAgent,
         ipHash: hashIP(ip),
-        lastActive: Date.now(),
+        lastActive: Date.now()
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true
+      }
     );
 
     const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure:
+        process.env.NODE_ENV === 'production',
+      sameSite:
+        process.env.NODE_ENV === 'production'
+          ? 'none'
+          : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/',
+      path: '/'
     };
-    
-    res.cookie('jwt_refresh', refreshToken, cookieOptions);
+
+    res.cookie(
+      'jwt_refresh',
+      refreshToken,
+      cookieOptions
+    );
 
     const userInfo = {
       id: user._id.toString(),
@@ -74,16 +108,21 @@ export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) =>
       email: user.email,
       role: user.role,
       status: user.status,
-      profilePictureUrl: user.profilePictureUrl || null,
+      profilePictureUrl:
+        user.profilePictureUrl || null,
       createdAt: user.createdAt,
-      authProvider: user.authProvider || 'email',
+      authProvider:
+        user.authProvider || 'email'
     };
 
     await logUserActivity(
       user._id,
       'USER_LOGIN',
       `User:${user._id}`,
-      { authProvider: user.authProvider, deviceId },
+      {
+        authProvider: user.authProvider,
+        deviceId
+      },
       ip,
       userAgent,
       jti
@@ -92,10 +131,16 @@ export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) =>
     if (redirectTo) {
       return res.redirect(redirectTo);
     }
-    return res.json({ accessToken, user: userInfo });
 
+    return res.json({
+      accessToken,
+      user: userInfo
+    });
   } catch (error) {
-    return res.status(500).json({ message: 'Server error during token generation' });
+    return res.status(500).json({
+      message:
+        'Server error during token generation'
+    });
   }
 };
 
@@ -103,21 +148,38 @@ export const handleLoginSuccess = async (res, user, req, { redirectTo } = {}) =>
 // GOOGLE AUTH INIT: googleAuthInit
 // ─────────────────────────────────────────────────────────────
 export const googleAuthInit = (req, res) => {
-  const state = crypto.randomBytes(32).toString('hex');
+  const state = crypto
+    .randomBytes(32)
+    .toString('hex');
+
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure:
+      process.env.NODE_ENV === 'production',
+    sameSite:
+      process.env.NODE_ENV === 'production'
+        ? 'none'
+        : 'lax',
     maxAge: 2 * 60 * 1000,
-    path: '/',
+    path: '/'
   };
-  res.cookie('oauth_state', state, cookieOptions);
 
-  const scope = encodeURIComponent('openid email profile');
+  res.cookie(
+    'oauth_state',
+    state,
+    cookieOptions
+  );
+
+  const scope = encodeURIComponent(
+    'openid email profile'
+  );
+
   const googleAuthUrl =
     `https://accounts.google.com/o/oauth2/v2/auth?` +
     `client_id=${process.env.GOOGLE_CLIENT_ID}&` +
-    `redirect_uri=${encodeURIComponent(process.env.GOOGLE_REDIRECT_URI)}&` +
+    `redirect_uri=${encodeURIComponent(
+      process.env.GOOGLE_REDIRECT_URI
+    )}&` +
     `response_type=code&scope=${scope}&state=${state}&` +
     `access_type=offline&prompt=select_account`;
 
@@ -127,211 +189,481 @@ export const googleAuthInit = (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // GOOGLE AUTH CALLBACK: googleAuthCallback
 // ─────────────────────────────────────────────────────────────
-export const googleAuthCallback = async (req, res) => {
-  const { code, state, error: googleError } = req.query;
-  const frontendUrl = process.env.FRONTEND_URL;
-  
+export const googleAuthCallback = async (
+  req,
+  res
+) => {
+  const {
+    code,
+    state,
+    error: googleError
+  } = req.query;
+
+  const frontendUrl =
+    process.env.FRONTEND_URL;
+
   const stateCookieOptions = {
     httpOnly: true,
     secure: true,
     sameSite: 'none',
-    path: '/',
+    path: '/'
   };
 
-  const expectedState = req.cookies.oauth_state;
-  res.clearCookie('oauth_state', stateCookieOptions);
+  const expectedState =
+    req.cookies.oauth_state;
 
-  if (!state || !expectedState || state !== expectedState) {
-    return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
+  res.clearCookie(
+    'oauth_state',
+    stateCookieOptions
+  );
+
+  if (
+    !state ||
+    !expectedState ||
+    state !== expectedState
+  ) {
+    return res.redirect(
+      `${frontendUrl}/login?error=google_auth_failed`
+    );
   }
 
   if (googleError) {
-    return res.redirect(`${frontendUrl}/login?error=google_auth_cancelled`);
+    return res.redirect(
+      `${frontendUrl}/login?error=google_auth_cancelled`
+    );
   }
-  
+
   if (!code) {
-    return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
+    return res.redirect(
+      `${frontendUrl}/login?error=google_auth_failed`
+    );
   }
 
   try {
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code,
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: process.env.GOOGLE_REDIRECT_URI,
-        grant_type: 'authorization_code',
-      }),
-    });
+    const tokenResponse = await fetch(
+      'https://oauth2.googleapis.com/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({
+          code,
+          client_id:
+            process.env.GOOGLE_CLIENT_ID,
+          client_secret:
+            process.env.GOOGLE_CLIENT_SECRET,
+          redirect_uri:
+            process.env.GOOGLE_REDIRECT_URI,
+          grant_type:
+            'authorization_code'
+        })
+      }
+    );
 
     if (!tokenResponse.ok) {
-      const errText = await tokenResponse.text();
-      return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
+      await tokenResponse.text();
+
+      return res.redirect(
+        `${frontendUrl}/login?error=google_auth_failed`
+      );
     }
 
-    const { access_token } = await tokenResponse.json();
+    const { access_token } =
+      await tokenResponse.json();
+
     const googleResponse = await fetch(
       'https://www.googleapis.com/oauth2/v3/userinfo',
-      { method: 'GET', headers: { Authorization: `Bearer ${access_token}` } }
+      {
+        method: 'GET',
+        headers: {
+          Authorization:
+            `Bearer ${access_token}`
+        }
+      }
     );
 
     if (!googleResponse.ok) {
-      return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
+      return res.redirect(
+        `${frontendUrl}/login?error=google_auth_failed`
+      );
     }
 
-    const payload = await googleResponse.json();
+    const payload =
+      await googleResponse.json();
 
     if (!payload || !payload.email) {
-      console.error('❌ [DEBUG] Google Payload Missing Email:', payload);
-      return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
+      console.error(
+        '❌ [DEBUG] Google Payload Missing Email:',
+        payload
+      );
+
+      return res.redirect(
+        `${frontendUrl}/login?error=google_auth_failed`
+      );
     }
 
-    const { name, email, picture, email_verified } = payload;
-    const normalizedEmail = email.toLowerCase().trim();
+    const {
+      name,
+      email,
+      picture,
+      email_verified
+    } = payload;
 
+    const normalizedEmail =
+      email.toLowerCase().trim();
+
+    // Google must explicitly confirm that the email
+    // address has been verified.
     if (email_verified !== true) {
-      return res.redirect(`${frontendUrl}/login?error=google_email_unverified`);
+      return res.redirect(
+        `${frontendUrl}/login?error=google_email_unverified`
+      );
     }
 
-    let user = await User.findOne({ email: normalizedEmail });
+    let user = await User.findOne({
+      email: normalizedEmail
+    });
 
     if (!user) {
       user = new User({
         name: name || 'Google User',
         email: normalizedEmail,
         authProvider: 'google',
-        profilePictureUrl: picture || null,
+
+        // Google has already verified this email.
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
+
+        profilePictureUrl:
+          picture || null
       });
+
       await user.save();
-    } else if (user.authProvider === 'email') {
-      return res.redirect(`${frontendUrl}/login?error=email_provider_conflict`);
+    } else if (
+      user.authProvider === 'email'
+    ) {
+      return res.redirect(
+        `${frontendUrl}/login?error=email_provider_conflict`
+      );
     } else {
-      if (picture && user.profilePictureUrl !== picture) {
+      let changed = false;
+
+      if (
+        picture &&
+        user.profilePictureUrl !== picture
+      ) {
         user.profilePictureUrl = picture;
+        changed = true;
+      }
+
+      // Keep existing Google accounts marked as
+      // verified when Google confirms the email.
+      if (user.emailVerified !== true) {
+        user.emailVerified = true;
+        user.emailVerifiedAt =
+          user.emailVerifiedAt ||
+          new Date();
+        changed = true;
+      }
+
+      if (changed) {
         await user.save();
       }
     }
 
     if (user.status !== 'active') {
-      console.error('❌ [DEBUG] Google Auth Failed: Account is banned.');
-      return res.redirect(`${frontendUrl}/login?error=account_banned`);
+      console.error(
+        '❌ [DEBUG] Google Auth Failed: Account is banned.'
+      );
+
+      return res.redirect(
+        `${frontendUrl}/login?error=account_banned`
+      );
     }
 
-    await saveUserMetadata(req, user._id);
+    await saveUserMetadata(
+      req,
+      user._id
+    );
 
-    const redirectTo = user.role === 'admin' ? `${frontendUrl}/admin` : frontendUrl;
-    
-    return handleLoginSuccess(res, user, req, { redirectTo });
+    const redirectTo =
+      user.role === 'admin'
+        ? `${frontendUrl}/admin`
+        : frontendUrl;
 
+    return handleLoginSuccess(
+      res,
+      user,
+      req,
+      { redirectTo }
+    );
   } catch (err) {
-    return res.redirect(`${frontendUrl}/login?error=google_auth_failed`);
+    return res.redirect(
+      `${frontendUrl}/login?error=google_auth_failed`
+    );
   }
 };
 
 // ─────────────────────────────────────────────────────────────
-// SIGNUP: signup
+// COMPLETE EMAIL SIGNUP: completeSignup
 // ─────────────────────────────────────────────────────────────
-export const signup = async (req, res) => {
+export const completeSignup = async (
+  req,
+  res
+) => {
   try {
-    const { email, password, name } = req.body;
+    const {
+      password,
+      name
+    } = req.body;
 
-    if (!email || !password || !name) {
-      return res.status(400).json({ message: 'Name, email, and password are required.' });
+    // The verified email is NEVER accepted from
+    // req.body. It must come from the server-side
+    // signup session.
+    const rawSignupSession =
+      req.cookies.signup_session;
+
+    if (!rawSignupSession) {
+      return res.status(401).json({
+        message:
+          'Your signup session is missing or has expired. Please verify your email again.'
+      });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
-    
-    const existingUser = await User.findOne({ email: normalizedEmail });
+    // Hash the raw cookie value so the raw
+    // session token never needs to be stored
+    // or searched for in MongoDB.
+    const signupSessionHash =
+      crypto
+        .createHash('sha256')
+        .update(
+          rawSignupSession,
+          'utf8'
+        )
+        .digest('hex');
+
+    const now = new Date();
+
+    const verification =
+      await SignupVerification.findOne({
+        signupSessionHash,
+        verifiedAt: {
+          $ne: null
+        },
+        usedAt: null,
+        signupSessionExpiresAt: {
+          $gt: now
+        },
+        expiresAt: {
+          $gt: now
+        }
+      });
+
+    if (!verification) {
+      return res.status(401).json({
+        message:
+          'Your signup session is missing or has expired. Please verify your email again.'
+      });
+    }
+
+    // The email comes exclusively from the
+    // verified database record.
+    const normalizedEmail =
+      verification.email;
+
+    // Protect against a race where an account
+    // was created after email verification.
+    const existingUser =
+      await User.findOne({
+        email: normalizedEmail
+      }).select(
+        '_id authProvider'
+      );
 
     if (existingUser) {
-      if (existingUser.authProvider === 'google') {
-        console.log('❌ [DEBUG] Signup Failed: Email registered with Google');
-        return res.status(400).json({
-          message: 'This email is registered with Google. Please use Google login.'
-        });
-      }
-      return res.status(400).json({ message: 'Email already registered. Please login.' });
+      return res.status(409).json({
+        message:
+          'This email is already registered. Please login.'
+      });
     }
 
-    const user = new User({ email: normalizedEmail, password, name });
+    const user = new User({
+      name,
+      email: normalizedEmail,
+      password,
+      authProvider: 'email',
+
+      // The account is created only after
+      // successful email verification.
+      emailVerified: true,
+      emailVerifiedAt:
+        verification.verifiedAt
+    });
+
     await user.save();
 
+    // Mark the temporary signup flow as consumed.
+    await SignupVerification.updateOne(
+      {
+        _id: verification._id,
+        usedAt: null
+      },
+      {
+        $set: {
+          usedAt: new Date()
+        }
+      }
+    );
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure:
+        process.env.NODE_ENV === 'production',
+      sameSite:
+        process.env.NODE_ENV === 'production'
+          ? 'none'
+          : 'lax',
+      path: '/'
+    };
+
+    res.clearCookie(
+      'signup_session',
+      cookieOptions
+    );
+
     const ip = getClientIp(req);
-    const userAgent = req.get('user-agent') || 'unknown';
+    const userAgent =
+      req.get('user-agent') || 'unknown';
 
     await logUserActivity(
       user._id,
       'USER_CREATED',
       `User:${user._id}`,
-      { authProvider: 'email' },
+      {
+        authProvider: 'email'
+      },
       ip,
       userAgent
     );
 
-    return res.status(201).json({ message: 'User registered successfully. Please login.' });
-
+    return res.status(201).json({
+      message:
+        'Account created successfully. Please login.'
+    });
   } catch (err) {
     if (err.name === 'ValidationError') {
-      const errorMessage = Object.values(err.errors)[0]?.message || 'Invalid input data.';
-      return res.status(400).json({ message: errorMessage });
+      const errorMessage =
+        Object.values(err.errors)[0]
+          ?.message ||
+        'Invalid input data.';
+
+      return res.status(400).json({
+        message: errorMessage
+      });
     }
-    
+
     if (err.code === 11000) {
-      return res.status(400).json({ message: 'Email already registered. Please login.' });
+      return res.status(409).json({
+        message:
+          'This email is already registered. Please login.'
+      });
     }
-    
-    console.error('💥 [DEBUG] Signup CRASH:', err.message);
-    return res.status(500).json({ message: 'Server error during signup.' });
+
+    console.error(
+      '💥 [DEBUG] Complete signup error:',
+      err.message
+    );
+
+    return res.status(500).json({
+      message:
+        'Server error during signup.'
+    });
   }
 };
 
 // ─────────────────────────────────────────────────────────────
 // LOGIN: login
 // ─────────────────────────────────────────────────────────────
-export const login = async (req, res) => {
+export const login = async (
+  req,
+  res
+) => {
   try {
-    const { email, password } = req.body;
+    const {
+      email,
+      password
+    } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required.' });
+      return res.status(400).json({
+        message:
+          'Email and password are required.'
+      });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail =
+      email.toLowerCase().trim();
 
-    const dummyHash = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
-    
-    const user = await User.findOne({ email: normalizedEmail }).select('+password');
-    
-    console.log(`🔍 [DEBUG] Login: User found in DB: ${!!user}, AuthProvider: ${user?.authProvider || 'none'}`);
+    const dummyHash =
+      '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
+    const user =
+      await User.findOne({
+        email: normalizedEmail
+      }).select('+password');
 
     let isMatch = false;
+
     if (user && user.password) {
-      isMatch = await bcrypt.compare(password, user.password);
+      isMatch = await bcrypt.compare(
+        password,
+        user.password
+      );
     } else {
-      await bcrypt.compare(password, dummyHash);
+      await bcrypt.compare(
+        password,
+        dummyHash
+      );
     }
 
-    if (!user || !user.password || !isMatch) {
-      console.error('❌ [DEBUG] Login Failed: Invalid credentials or provider mismatch');
+    if (
+      !user ||
+      !user.password ||
+      !isMatch
+    ) {
+      console.error(
+        '❌ [DEBUG] Login Failed: Invalid credentials or provider mismatch'
+      );
+
       return res.status(401).json({
-        message: 'Invalid credentials or please use your social login provider.'
+        message:
+          'Invalid credentials or please use your social login provider.'
       });
     }
 
     if (user.status !== 'active') {
       return res.status(403).json({
-        message: 'Your account has been banned. Please contact support.'
+        message:
+          'Your account has been banned. Please contact support.'
       });
     }
 
-    await saveUserMetadata(req, user._id);
-    
-    console.log('✅ [DEBUG] Login: Success. Calling handleLoginSuccess...');
-    return handleLoginSuccess(res, user, req);
+    await saveUserMetadata(
+      req,
+      user._id
+    );
 
+    return handleLoginSuccess(
+      res,
+      user,
+      req
+    );
   } catch (err) {
-    return res.status(500).json({ message: 'Server error during login.' });
+    return res.status(500).json({
+      message:
+        'Server error during login.'
+    });
   }
-};
+}; 

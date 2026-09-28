@@ -315,7 +315,6 @@ export const revokeSession = async (req, res) => {
             req.get('user-agent')
         );
 
-        console.log(`✅ Session ${sessionId} revoked for user ${userId}`);
         return res.sendStatus(204);
     } catch (err) {
         console.error('Revoke session error:', err);

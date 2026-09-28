@@ -287,8 +287,6 @@ export const verifyRegistration = async (req, res) => {
       userAgent
     );
 
-    console.log(`✅ Passkey registered for user ${userId} — "${passkey.label}"`);
-
     return res.status(201).json({
       message: 'Passkey registered successfully.',
       passkey: {
@@ -567,8 +565,6 @@ export const deletePasskey = async (req, res) => {
       req.get('user-agent') || ''
     );
 
-    console.log(`✅ Passkey "${passkey.label}" deleted by user ${userId}`);
-
     return res.json({ message: 'Passkey removed successfully.' });
   } catch (error) {
     console.error('❌ deletePasskey Error:', error);
@@ -622,8 +618,6 @@ export const updatePasskeyLabel = async (req, res) => {
       getClientIp(req),
       req.get('user-agent') || ''
     );
-
-    console.log(`✅ Passkey ${passkeyId} renamed to "${passkey.label}" by user ${userId}`);
 
     return res.json({
       message: 'Passkey renamed successfully.',
